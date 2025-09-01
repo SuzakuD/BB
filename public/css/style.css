@@ -35,19 +35,31 @@ body {
 
 .category-item {
     cursor: pointer;
-    padding: 8px 12px;
-    border-radius: 4px;
-    margin-bottom: 4px;
-    transition: background-color 0.2s;
+    padding: 10px 15px;
+    border-radius: 6px;
+    margin-bottom: 6px;
+    transition: all 0.2s ease;
+    border: 1px solid transparent;
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
 .category-item:hover {
     background-color: #e9ecef;
+    border-color: #dee2e6;
+    transform: translateX(2px);
 }
 
 .category-item.active {
     background-color: #007bff;
     color: white;
+    border-color: #0056b3;
+    box-shadow: 0 2px 4px rgba(0,123,255,0.3);
+}
+
+.category-item.active:hover {
+    background-color: #0056b3;
 }
 
 .cart-item {

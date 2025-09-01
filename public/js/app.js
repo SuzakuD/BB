@@ -337,7 +337,7 @@ async function loadCategories() {
         
         const categoriesList = document.getElementById('categories-list');
         let html = `
-            <div class="category-item ${currentCategory === null ? 'active' : ''}" onclick="filterByCategory(null)">
+            <div class="category-item ${currentCategory === null ? 'active' : ''}" onclick="filterByCategory(null)" style="cursor: pointer;">
                 <i class="fas fa-th"></i> ทั้งหมด
             </div>
         `;
@@ -345,7 +345,7 @@ async function loadCategories() {
         data.categories.forEach(category => {
             html += `
                 <div class="category-item ${currentCategory === category.id ? 'active' : ''}" 
-                     onclick="filterByCategory(${category.id})">
+                     onclick="filterByCategory(${category.id})" style="cursor: pointer;">
                     <i class="fas fa-tag"></i> ${category.name}
                 </div>
             `;
@@ -904,37 +904,557 @@ function showAlert(message, type = 'info') {
     }, 5000);
 }
 
-// Placeholder functions for admin features
+// Complete admin functions
 async function loadAdminCategories() {
-    document.getElementById('admin-content').innerHTML = '<div class="admin-tab"><h3>จัดการหมวดหมู่</h3><p>ฟีเจอร์นี้กำลังพัฒนา</p></div>';
+    try {
+        const response = await fetch('api/products.php?action=categories');
+        const data = await response.json();
+        
+        const adminContent = document.getElementById('admin-content');
+        
+        let html = `
+            <div class="admin-tab">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h3>จัดการหมวดหมู่</h3>
+                    <button class="btn btn-primary" onclick="showAddCategoryModal()">
+                        <i class="fas fa-plus"></i> เพิ่มหมวดหมู่
+                    </button>
+                </div>
+                
+                <div class="table-responsive">
+                    <table class="table table-striped admin-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>ชื่อหมวดหมู่</th>
+                                <th>จำนวนสินค้า</th>
+                                <th>การจัดการ</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+        `;
+        
+        if (data.categories.length === 0) {
+            html += `
+                <tr>
+                    <td colspan="4" class="text-center text-muted py-4">
+                        <i class="fas fa-tags fa-2x mb-2"></i><br>
+                        ยังไม่มีหมวดหมู่
+                    </td>
+                </tr>
+            `;
+        } else {
+            // Get product counts for each category
+            const productCountsResponse = await fetch('api/products.php?action=list&limit=1000');
+            const productData = await productCountsResponse.json();
+            
+            data.categories.forEach(category => {
+                const productCount = productData.products.filter(p => p.category_id == category.id).length;
+                
+                html += `
+                    <tr>
+                        <td>${category.id}</td>
+                        <td>${category.name}</td>
+                        <td><span class="badge bg-info">${productCount}</span></td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary me-1" onclick="editCategory(${category.id}, '${category.name.replace(/'/g, "\\'")}')"
+                                    title="แก้ไข">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="deleteCategory(${category.id}, '${category.name.replace(/'/g, "\\'")}')"
+                                    title="ลบ" ${productCount > 0 ? 'disabled' : ''}>
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+        
+        html += `
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+        
+        adminContent.innerHTML = html;
+        
+    } catch (error) {
+        console.error('Failed to load admin categories:', error);
+        showAlert('ไม่สามารถโหลดข้อมูลหมวดหมู่ได้', 'danger');
+    }
 }
 
 async function loadAdminUsers() {
-    document.getElementById('admin-content').innerHTML = '<div class="admin-tab"><h3>จัดการผู้ใช้</h3><p>ฟีเจอร์นี้กำลังพัฒนา</p></div>';
+    try {
+        const response = await fetch('api/admin/users.php?action=list');
+        const data = await response.json();
+        
+        const adminContent = document.getElementById('admin-content');
+        
+        let html = `
+            <div class="admin-tab">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h3>จัดการผู้ใช้</h3>
+                    <button class="btn btn-primary" onclick="showAddUserModal()">
+                        <i class="fas fa-plus"></i> เพิ่มผู้ใช้
+                    </button>
+                </div>
+                
+                <div class="table-responsive">
+                    <table class="table table-striped admin-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>ชื่อผู้ใช้</th>
+                                <th>บทบาท</th>
+                                <th>วันที่สมัคร</th>
+                                <th>การจัดการ</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+        `;
+        
+        if (data.users.length === 0) {
+            html += `
+                <tr>
+                    <td colspan="5" class="text-center text-muted py-4">
+                        <i class="fas fa-users fa-2x mb-2"></i><br>
+                        ยังไม่มีผู้ใช้
+                    </td>
+                </tr>
+            `;
+        } else {
+            data.users.forEach(user => {
+                const roleClass = user.role === 'admin' ? 'bg-danger' : 'bg-primary';
+                const roleText = user.role === 'admin' ? 'ผู้ดูแลระบบ' : 'ผู้ใช้ทั่วไป';
+                const createdDate = new Date(user.created_at).toLocaleDateString('th-TH');
+                
+                html += `
+                    <tr>
+                        <td>${user.id}</td>
+                        <td>${user.username}</td>
+                        <td><span class="badge ${roleClass}">${roleText}</span></td>
+                        <td>${createdDate}</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary me-1" onclick="editUser(${user.id})"
+                                    title="แก้ไข">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="deleteUser(${user.id}, '${user.username.replace(/'/g, "\\'")}')"
+                                    title="ลบ" ${user.id == currentUser.id ? 'disabled' : ''}>
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+        
+        html += `
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+        
+        adminContent.innerHTML = html;
+        
+    } catch (error) {
+        console.error('Failed to load admin users:', error);
+        showAlert('ไม่สามารถโหลดข้อมูลผู้ใช้ได้', 'danger');
+    }
 }
 
 async function loadAdminOrders() {
-    document.getElementById('admin-content').innerHTML = '<div class="admin-tab"><h3>จัดการคำสั่งซื้อ</h3><p>ฟีเจอร์นี้กำลังพัฒนา</p></div>';
+    try {
+        const response = await fetch('api/orders.php?action=list');
+        const data = await response.json();
+        
+        const adminContent = document.getElementById('admin-content');
+        
+        let html = `
+            <div class="admin-tab">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h3>จัดการคำสั่งซื้อ</h3>
+                    <div>
+                        <span class="text-muted">รวม ${data.total} คำสั่งซื้อ</span>
+                    </div>
+                </div>
+                
+                <div class="table-responsive">
+                    <table class="table table-striped admin-table">
+                        <thead>
+                            <tr>
+                                <th>เลขที่</th>
+                                <th>ผู้สั่งซื้อ</th>
+                                <th>ยอดรวม</th>
+                                <th>สถานะ</th>
+                                <th>วันที่สั่งซื้อ</th>
+                                <th>การจัดการ</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+        `;
+        
+        if (data.orders.length === 0) {
+            html += `
+                <tr>
+                    <td colspan="6" class="text-center text-muted py-4">
+                        <i class="fas fa-shopping-bag fa-2x mb-2"></i><br>
+                        ยังไม่มีคำสั่งซื้อ
+                    </td>
+                </tr>
+            `;
+        } else {
+            data.orders.forEach(order => {
+                const statusClass = {
+                    'pending': 'bg-warning',
+                    'confirmed': 'bg-info',
+                    'processing': 'bg-primary',
+                    'shipped': 'bg-success',
+                    'delivered': 'bg-success',
+                    'cancelled': 'bg-danger'
+                }[order.status] || 'bg-secondary';
+                
+                const statusText = {
+                    'pending': 'รอดำเนินการ',
+                    'confirmed': 'ยืนยันแล้ว',
+                    'processing': 'กำลังเตรียม',
+                    'shipped': 'จัดส่งแล้ว',
+                    'delivered': 'ส่งถึงแล้ว',
+                    'cancelled': 'ยกเลิก'
+                }[order.status] || order.status;
+                
+                const orderDate = new Date(order.created_at).toLocaleDateString('th-TH');
+                
+                html += `
+                    <tr>
+                        <td>#${order.id}</td>
+                        <td>${order.username || 'ไม่ระบุ'}</td>
+                        <td>${Number(order.total).toLocaleString()} บาท</td>
+                        <td><span class="badge ${statusClass}">${statusText}</span></td>
+                        <td>${orderDate}</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-info me-1" onclick="viewOrderDetail(${order.id})"
+                                    title="ดูรายละเอียด">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                            <div class="btn-group">
+                                <button class="btn btn-sm btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <ul class="dropdown-menu">
+                                    <li><a class="dropdown-item" href="#" onclick="updateOrderStatus(${order.id}, 'confirmed')">ยืนยัน</a></li>
+                                    <li><a class="dropdown-item" href="#" onclick="updateOrderStatus(${order.id}, 'processing')">เตรียมสินค้า</a></li>
+                                    <li><a class="dropdown-item" href="#" onclick="updateOrderStatus(${order.id}, 'shipped')">จัดส่ง</a></li>
+                                    <li><a class="dropdown-item" href="#" onclick="updateOrderStatus(${order.id}, 'delivered')">ส่งถึงแล้ว</a></li>
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li><a class="dropdown-item text-danger" href="#" onclick="updateOrderStatus(${order.id}, 'cancelled')">ยกเลิก</a></li>
+                                </ul>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+        
+        html += `
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+        
+        adminContent.innerHTML = html;
+        
+    } catch (error) {
+        console.error('Failed to load admin orders:', error);
+        showAlert('ไม่สามารถโหลดข้อมูลคำสั่งซื้อได้', 'danger');
+    }
 }
 
 async function loadAdminPromotions() {
-    document.getElementById('admin-content').innerHTML = '<div class="admin-tab"><h3>จัดการโปรโมชั่น</h3><p>ฟีเจอร์นี้กำลังพัฒนา</p></div>';
+    try {
+        const response = await fetch('api/admin/promotions.php?action=list');
+        const data = await response.json();
+        
+        const adminContent = document.getElementById('admin-content');
+        
+        let html = `
+            <div class="admin-tab">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h3>จัดการโปรโมชั่น</h3>
+                    <button class="btn btn-primary" onclick="showAddPromotionModal()">
+                        <i class="fas fa-plus"></i> เพิ่มโปรโมชั่น
+                    </button>
+                </div>
+                
+                <div class="table-responsive">
+                    <table class="table table-striped admin-table">
+                        <thead>
+                            <tr>
+                                <th>รหัส</th>
+                                <th>ส่วนลด</th>
+                                <th>วันหมดอายุ</th>
+                                <th>สถานะ</th>
+                                <th>การจัดการ</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+        `;
+        
+        if (data.promotions.length === 0) {
+            html += `
+                <tr>
+                    <td colspan="5" class="text-center text-muted py-4">
+                        <i class="fas fa-percent fa-2x mb-2"></i><br>
+                        ยังไม่มีโปรโมชั่น
+                    </td>
+                </tr>
+            `;
+        } else {
+            data.promotions.forEach(promo => {
+                const expireDate = new Date(promo.expire_date).toLocaleDateString('th-TH');
+                const isExpired = promo.is_expired;
+                const statusClass = isExpired ? 'bg-danger' : 'bg-success';
+                const statusText = isExpired ? 'หมดอายุ' : 'ใช้งานได้';
+                
+                html += `
+                    <tr ${isExpired ? 'class="table-secondary"' : ''}>
+                        <td><code>${promo.code}</code></td>
+                        <td>${promo.discount}%</td>
+                        <td>${expireDate}</td>
+                        <td><span class="badge ${statusClass}">${statusText}</span></td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary me-1" onclick="editPromotion(${promo.id})"
+                                    title="แก้ไข">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="deletePromotion(${promo.id}, '${promo.code.replace(/'/g, "\\'")}')"
+                                    title="ลบ">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+        
+        html += `
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+        
+        adminContent.innerHTML = html;
+        
+    } catch (error) {
+        console.error('Failed to load admin promotions:', error);
+        showAlert('ไม่สามารถโหลดข้อมูลโปรโมชั่นได้', 'danger');
+    }
 }
 
 async function loadAdminReports() {
-    document.getElementById('admin-content').innerHTML = '<div class="admin-tab"><h3>รายงาน</h3><p>ฟีเจอร์นี้กำลังพัฒนา</p></div>';
+    try {
+        const response = await fetch('api/admin/reports.php?action=dashboard');
+        const data = await response.json();
+        
+        const adminContent = document.getElementById('admin-content');
+        
+        let html = `
+            <div class="admin-tab">
+                <h3 class="mb-4">รายงานและสถิติ</h3>
+                
+                <!-- Stats Cards -->
+                <div class="admin-stats mb-4">
+                    <div class="stat-card">
+                        <div class="stat-number">${Number(data.stats.total_sales).toLocaleString()}</div>
+                        <div class="stat-label">ยอดขายรวม (บาท)</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">${data.stats.total_orders}</div>
+                        <div class="stat-label">คำสั่งซื้อทั้งหมด</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">${data.stats.total_products}</div>
+                        <div class="stat-label">สินค้าทั้งหมด</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">${data.stats.total_customers}</div>
+                        <div class="stat-label">ลูกค้า</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number text-warning">${data.stats.low_stock}</div>
+                        <div class="stat-label">สินค้าใกล้หมด</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number text-success">${Number(data.stats.month_sales).toLocaleString()}</div>
+                        <div class="stat-label">ยอดขายเดือนนี้ (บาท)</div>
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5><i class="fas fa-shopping-bag"></i> คำสั่งซื้อล่าสุด</h5>
+                            </div>
+                            <div class="card-body">
+        `;
+        
+        if (data.stats.recent_orders.length === 0) {
+            html += '<p class="text-muted text-center">ยังไม่มีคำสั่งซื้อ</p>';
+        } else {
+            html += '<div class="table-responsive"><table class="table table-sm">';
+            html += '<thead><tr><th>เลขที่</th><th>ลูกค้า</th><th>ยอดรวม</th><th>สถานะ</th></tr></thead><tbody>';
+            
+            data.stats.recent_orders.forEach(order => {
+                const statusClass = {
+                    'pending': 'warning',
+                    'confirmed': 'info',
+                    'processing': 'primary',
+                    'shipped': 'success',
+                    'delivered': 'success',
+                    'cancelled': 'danger'
+                }[order.status] || 'secondary';
+                
+                html += `
+                    <tr>
+                        <td>#${order.id}</td>
+                        <td>${order.username || 'ไม่ระบุ'}</td>
+                        <td>${Number(order.total).toLocaleString()} บาท</td>
+                        <td><span class="badge bg-${statusClass}">${order.status}</span></td>
+                    </tr>
+                `;
+            });
+            
+            html += '</tbody></table></div>';
+        }
+        
+        html += `
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5><i class="fas fa-star"></i> สินค้าขายดี</h5>
+                            </div>
+                            <div class="card-body">
+        `;
+        
+        if (data.stats.top_products.length === 0) {
+            html += '<p class="text-muted text-center">ยังไม่มีข้อมูลการขาย</p>';
+        } else {
+            html += '<div class="table-responsive"><table class="table table-sm">';
+            html += '<thead><tr><th>สินค้า</th><th>ขายได้</th><th>รายได้</th></tr></thead><tbody>';
+            
+            data.stats.top_products.forEach(product => {
+                html += `
+                    <tr>
+                        <td>${product.name}</td>
+                        <td><span class="badge bg-primary">${product.total_sold}</span></td>
+                        <td>${Number(product.total_revenue).toLocaleString()} บาท</td>
+                    </tr>
+                `;
+            });
+            
+            html += '</tbody></table></div>';
+        }
+        
+        html += `
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        adminContent.innerHTML = html;
+        
+    } catch (error) {
+        console.error('Failed to load admin reports:', error);
+        showAlert('ไม่สามารถโหลดรายงานได้', 'danger');
+    }
 }
 
+// Product management functions
 function showAddProductModal() {
-    showAlert('ฟีเจอร์นี้กำลังพัฒนา', 'info');
+    document.getElementById('productModalTitle').textContent = 'เพิ่มสินค้า';
+    document.getElementById('product-form').reset();
+    document.getElementById('product-id').value = '';
+    document.getElementById('password-required').style.display = 'inline';
+    document.getElementById('password-help').style.display = 'none';
+    
+    // Load categories for dropdown
+    loadCategoriesForSelect();
+    
+    // Reset image preview
+    resetImagePreview();
+    
+    // Set up image preview listener
+    setupImagePreview();
+    
+    new bootstrap.Modal(document.getElementById('productModal')).show();
 }
 
-function editProduct(id) {
-    showAlert('ฟีเจอร์นี้กำลังพัฒนา', 'info');
+async function editProduct(id) {
+    try {
+        const response = await fetch(`api/products.php?action=detail&id=${id}`);
+        const data = await response.json();
+        
+        if (data.product) {
+            const product = data.product;
+            
+            document.getElementById('productModalTitle').textContent = 'แก้ไขสินค้า';
+            document.getElementById('product-id').value = product.id;
+            document.getElementById('product-name').value = product.name;
+            document.getElementById('product-description').value = product.description || '';
+            document.getElementById('product-price').value = product.price;
+            document.getElementById('product-stock').value = product.stock;
+            document.getElementById('product-image').value = product.image || '';
+            
+            // Load categories and set selected
+            await loadCategoriesForSelect();
+            document.getElementById('product-category').value = product.category_id || '';
+            
+            // Update image preview
+            updateImagePreview(product.image);
+            setupImagePreview();
+            
+            new bootstrap.Modal(document.getElementById('productModal')).show();
+        } else {
+            showAlert(data.error, 'danger');
+        }
+    } catch (error) {
+        console.error('Failed to load product:', error);
+        showAlert('ไม่สามารถโหลดข้อมูลสินค้าได้', 'danger');
+    }
 }
 
-function deleteProduct(id) {
-    showAlert('ฟีเจอร์นี้กำลังพัฒนา', 'info');
+async function deleteProduct(id) {
+    if (confirm('คุณแน่ใจว่าต้องการลบสินค้านี้หรือไม่?')) {
+        try {
+            const response = await fetch(`api/products.php?action=delete&id=${id}`, {
+                method: 'DELETE'
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                showAlert(data.message, 'success');
+                loadAdminProducts(); // Reload the products list
+            } else {
+                showAlert(data.error, 'danger');
+            }
+        } catch (error) {
+            console.error('Failed to delete product:', error);
+            showAlert('ไม่สามารถลบสินค้าได้', 'danger');
+        }
+    }
 }
 
 function showUserOrders() {
@@ -961,5 +1481,547 @@ async function validatePromotion() {
         }
     } catch (error) {
         messageDiv.innerHTML = '<div class="alert alert-danger">ไม่สามารถตรวจสอบรหัสโปรโมชั่นได้</div>';
+    }
+}
+
+// Supporting functions for admin system
+
+// Image handling functions
+function setupImagePreview() {
+    const imageInput = document.getElementById('product-image');
+    imageInput.addEventListener('input', function() {
+        updateImagePreview(this.value);
+    });
+}
+
+function updateImagePreview(imageUrl) {
+    const previewImg = document.getElementById('preview-img');
+    const noPreview = document.getElementById('no-preview');
+    
+    if (imageUrl) {
+        // Check if it's a full URL or just a filename
+        let fullImageUrl = imageUrl;
+        if (!imageUrl.startsWith('http')) {
+            // If it's just a filename, create a placeholder URL
+            fullImageUrl = `https://via.placeholder.com/300x200?text=${encodeURIComponent(imageUrl)}`;
+        }
+        
+        previewImg.src = fullImageUrl;
+        previewImg.style.display = 'block';
+        noPreview.style.display = 'none';
+    } else {
+        previewImg.style.display = 'none';
+        noPreview.style.display = 'block';
+    }
+}
+
+function resetImagePreview() {
+    document.getElementById('preview-img').style.display = 'none';
+    document.getElementById('no-preview').style.display = 'block';
+    document.getElementById('product-image').value = '';
+}
+
+async function loadCategoriesForSelect() {
+    try {
+        const response = await fetch('api/products.php?action=categories');
+        const data = await response.json();
+        
+        const select = document.getElementById('product-category');
+        select.innerHTML = '<option value="">เลือกหมวดหมู่</option>';
+        
+        data.categories.forEach(category => {
+            select.innerHTML += `<option value="${category.id}">${category.name}</option>`;
+        });
+    } catch (error) {
+        console.error('Failed to load categories for select:', error);
+    }
+}
+
+// Product form submission
+document.addEventListener('DOMContentLoaded', function() {
+    // Add form submission handler when DOM is loaded
+    setTimeout(() => {
+        const productForm = document.getElementById('product-form');
+        if (productForm) {
+            productForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                await handleProductSubmit();
+            });
+        }
+        
+        const categoryForm = document.getElementById('category-form');
+        if (categoryForm) {
+            categoryForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                await handleCategorySubmit();
+            });
+        }
+        
+        const userForm = document.getElementById('user-form');
+        if (userForm) {
+            userForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                await handleUserSubmit();
+            });
+        }
+        
+        const promotionForm = document.getElementById('promotion-form');
+        if (promotionForm) {
+            promotionForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                await handlePromotionSubmit();
+            });
+        }
+    }, 1000);
+});
+
+async function handleProductSubmit() {
+    const productId = document.getElementById('product-id').value;
+    const name = document.getElementById('product-name').value;
+    const description = document.getElementById('product-description').value;
+    const price = document.getElementById('product-price').value;
+    const stock = document.getElementById('product-stock').value;
+    const categoryId = document.getElementById('product-category').value;
+    const image = document.getElementById('product-image').value;
+    const messageDiv = document.getElementById('product-message');
+    
+    try {
+        const isEdit = productId !== '';
+        const url = isEdit ? 'api/products.php?action=update' : 'api/products.php?action=create';
+        const method = isEdit ? 'PUT' : 'POST';
+        
+        const payload = {
+            name,
+            description,
+            price: parseFloat(price),
+            stock: parseInt(stock),
+            category_id: categoryId || null,
+            image
+        };
+        
+        if (isEdit) {
+            payload.id = parseInt(productId);
+        }
+        
+        const response = await fetch(url, {
+            method: method,
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            messageDiv.innerHTML = `<div class="alert alert-success">${data.message}</div>`;
+            setTimeout(() => {
+                bootstrap.Modal.getInstance(document.getElementById('productModal')).hide();
+                loadAdminProducts();
+            }, 1500);
+        } else {
+            messageDiv.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+        }
+    } catch (error) {
+        console.error('Product submit failed:', error);
+        messageDiv.innerHTML = '<div class="alert alert-danger">เกิดข้อผิดพลาดในการบันทึก</div>';
+    }
+}
+
+// Category management functions
+function showAddCategoryModal() {
+    document.getElementById('categoryModalTitle').textContent = 'เพิ่มหมวดหมู่';
+    document.getElementById('category-form').reset();
+    document.getElementById('category-id').value = '';
+    new bootstrap.Modal(document.getElementById('categoryModal')).show();
+}
+
+function editCategory(id, name) {
+    document.getElementById('categoryModalTitle').textContent = 'แก้ไขหมวดหมู่';
+    document.getElementById('category-id').value = id;
+    document.getElementById('category-name').value = name;
+    new bootstrap.Modal(document.getElementById('categoryModal')).show();
+}
+
+async function deleteCategory(id, name) {
+    if (confirm(`คุณแน่ใจว่าต้องการลบหมวดหมู่ "${name}" หรือไม่?`)) {
+        try {
+            const response = await fetch(`api/products.php?action=category&id=${id}`, {
+                method: 'DELETE'
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                showAlert(data.message, 'success');
+                loadAdminCategories();
+                loadCategories(); // Reload sidebar categories
+            } else {
+                showAlert(data.error, 'danger');
+            }
+        } catch (error) {
+            console.error('Failed to delete category:', error);
+            showAlert('ไม่สามารถลบหมวดหมู่ได้', 'danger');
+        }
+    }
+}
+
+async function handleCategorySubmit() {
+    const categoryId = document.getElementById('category-id').value;
+    const name = document.getElementById('category-name').value;
+    const messageDiv = document.getElementById('category-message');
+    
+    try {
+        const isEdit = categoryId !== '';
+        const url = isEdit ? 'api/products.php?action=category' : 'api/products.php?action=category';
+        const method = isEdit ? 'PUT' : 'POST';
+        
+        const payload = { name };
+        if (isEdit) {
+            payload.id = parseInt(categoryId);
+        }
+        
+        const response = await fetch(url, {
+            method: method,
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            messageDiv.innerHTML = `<div class="alert alert-success">${data.message}</div>`;
+            setTimeout(() => {
+                bootstrap.Modal.getInstance(document.getElementById('categoryModal')).hide();
+                loadAdminCategories();
+                loadCategories(); // Reload sidebar categories
+            }, 1500);
+        } else {
+            messageDiv.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+        }
+    } catch (error) {
+        console.error('Category submit failed:', error);
+        messageDiv.innerHTML = '<div class="alert alert-danger">เกิดข้อผิดพลาดในการบันทึก</div>';
+    }
+}
+
+// User management functions
+function showAddUserModal() {
+    document.getElementById('userModalTitle').textContent = 'เพิ่มผู้ใช้';
+    document.getElementById('user-form').reset();
+    document.getElementById('user-id').value = '';
+    document.getElementById('password-required').style.display = 'inline';
+    document.getElementById('password-help').style.display = 'none';
+    document.getElementById('user-password').required = true;
+    new bootstrap.Modal(document.getElementById('userModal')).show();
+}
+
+async function editUser(id) {
+    try {
+        // We'll need to get user data first
+        const response = await fetch(`api/admin/users.php?action=list`);
+        const data = await response.json();
+        const user = data.users.find(u => u.id == id);
+        
+        if (user) {
+            document.getElementById('userModalTitle').textContent = 'แก้ไขผู้ใช้';
+            document.getElementById('user-id').value = user.id;
+            document.getElementById('user-username').value = user.username;
+            document.getElementById('user-role').value = user.role;
+            document.getElementById('user-password').value = '';
+            document.getElementById('password-required').style.display = 'none';
+            document.getElementById('password-help').style.display = 'block';
+            document.getElementById('user-password').required = false;
+            new bootstrap.Modal(document.getElementById('userModal')).show();
+        }
+    } catch (error) {
+        console.error('Failed to load user:', error);
+        showAlert('ไม่สามารถโหลดข้อมูลผู้ใช้ได้', 'danger');
+    }
+}
+
+async function deleteUser(id, username) {
+    if (confirm(`คุณแน่ใจว่าต้องการลบผู้ใช้ "${username}" หรือไม่?`)) {
+        try {
+            const response = await fetch(`api/admin/users.php?action=delete&id=${id}`, {
+                method: 'DELETE'
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                showAlert(data.message, 'success');
+                loadAdminUsers();
+            } else {
+                showAlert(data.error, 'danger');
+            }
+        } catch (error) {
+            console.error('Failed to delete user:', error);
+            showAlert('ไม่สามารถลบผู้ใช้ได้', 'danger');
+        }
+    }
+}
+
+async function handleUserSubmit() {
+    const userId = document.getElementById('user-id').value;
+    const username = document.getElementById('user-username').value;
+    const password = document.getElementById('user-password').value;
+    const role = document.getElementById('user-role').value;
+    const messageDiv = document.getElementById('user-message');
+    
+    try {
+        const isEdit = userId !== '';
+        const url = isEdit ? 'api/admin/users.php?action=update' : 'api/admin/users.php?action=create';
+        const method = isEdit ? 'PUT' : 'POST';
+        
+        const payload = { username, role };
+        if (password) {
+            payload.password = password;
+        }
+        if (isEdit) {
+            payload.id = parseInt(userId);
+        }
+        
+        const response = await fetch(url, {
+            method: method,
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            messageDiv.innerHTML = `<div class="alert alert-success">${data.message}</div>`;
+            setTimeout(() => {
+                bootstrap.Modal.getInstance(document.getElementById('userModal')).hide();
+                loadAdminUsers();
+            }, 1500);
+        } else {
+            messageDiv.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+        }
+    } catch (error) {
+        console.error('User submit failed:', error);
+        messageDiv.innerHTML = '<div class="alert alert-danger">เกิดข้อผิดพลาดในการบันทึก</div>';
+    }
+}
+
+// Promotion management functions
+function showAddPromotionModal() {
+    document.getElementById('promotionModalTitle').textContent = 'เพิ่มโปรโมชั่น';
+    document.getElementById('promotion-form').reset();
+    document.getElementById('promotion-id').value = '';
+    // Set default expire date to 30 days from now
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + 30);
+    document.getElementById('promotion-expire').value = futureDate.toISOString().split('T')[0];
+    new bootstrap.Modal(document.getElementById('promotionModal')).show();
+}
+
+async function editPromotion(id) {
+    try {
+        const response = await fetch(`api/admin/promotions.php?action=list`);
+        const data = await response.json();
+        const promotion = data.promotions.find(p => p.id == id);
+        
+        if (promotion) {
+            document.getElementById('promotionModalTitle').textContent = 'แก้ไขโปรโมชั่น';
+            document.getElementById('promotion-id').value = promotion.id;
+            document.getElementById('promotion-code').value = promotion.code;
+            document.getElementById('promotion-discount').value = promotion.discount;
+            document.getElementById('promotion-expire').value = promotion.expire_date;
+            new bootstrap.Modal(document.getElementById('promotionModal')).show();
+        }
+    } catch (error) {
+        console.error('Failed to load promotion:', error);
+        showAlert('ไม่สามารถโหลดข้อมูลโปรโมชั่นได้', 'danger');
+    }
+}
+
+async function deletePromotion(id, code) {
+    if (confirm(`คุณแน่ใจว่าต้องการลบโปรโมชั่น "${code}" หรือไม่?`)) {
+        try {
+            const response = await fetch(`api/admin/promotions.php?action=delete&id=${id}`, {
+                method: 'DELETE'
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                showAlert(data.message, 'success');
+                loadAdminPromotions();
+            } else {
+                showAlert(data.error, 'danger');
+            }
+        } catch (error) {
+            console.error('Failed to delete promotion:', error);
+            showAlert('ไม่สามารถลบโปรโมชั่นได้', 'danger');
+        }
+    }
+}
+
+async function handlePromotionSubmit() {
+    const promotionId = document.getElementById('promotion-id').value;
+    const code = document.getElementById('promotion-code').value;
+    const discount = document.getElementById('promotion-discount').value;
+    const expireDate = document.getElementById('promotion-expire').value;
+    const messageDiv = document.getElementById('promotion-message');
+    
+    try {
+        const isEdit = promotionId !== '';
+        const url = isEdit ? 'api/admin/promotions.php?action=update' : 'api/admin/promotions.php?action=create';
+        const method = isEdit ? 'PUT' : 'POST';
+        
+        const payload = {
+            code,
+            discount: parseFloat(discount),
+            expire_date: expireDate
+        };
+        
+        if (isEdit) {
+            payload.id = parseInt(promotionId);
+        }
+        
+        const response = await fetch(url, {
+            method: method,
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            messageDiv.innerHTML = `<div class="alert alert-success">${data.message}</div>`;
+            setTimeout(() => {
+                bootstrap.Modal.getInstance(document.getElementById('promotionModal')).hide();
+                loadAdminPromotions();
+            }, 1500);
+        } else {
+            messageDiv.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+        }
+    } catch (error) {
+        console.error('Promotion submit failed:', error);
+        messageDiv.innerHTML = '<div class="alert alert-danger">เกิดข้อผิดพลาดในการบันทึก</div>';
+    }
+}
+
+// Order management functions
+async function viewOrderDetail(orderId) {
+    try {
+        const response = await fetch(`api/orders.php?action=detail&id=${orderId}`);
+        const data = await response.json();
+        
+        if (data.order) {
+            const order = data.order;
+            let itemsHtml = '';
+            
+            order.items.forEach(item => {
+                itemsHtml += `
+                    <tr>
+                        <td>${item.product_name}</td>
+                        <td>${item.quantity}</td>
+                        <td>${Number(item.price).toLocaleString()} บาท</td>
+                        <td>${Number(item.quantity * item.price).toLocaleString()} บาท</td>
+                    </tr>
+                `;
+            });
+            
+            const orderDate = new Date(order.created_at).toLocaleDateString('th-TH');
+            
+            const modalHtml = `
+                <div class="modal fade" id="orderDetailModal" tabindex="-1">
+                    <div class="modal-dialog modal-lg">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">รายละเอียดคำสั่งซื้อ #${order.id}</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <strong>ผู้สั่งซื้อ:</strong> ${order.username}<br>
+                                        <strong>วันที่สั่งซื้อ:</strong> ${orderDate}<br>
+                                        <strong>สถานะ:</strong> ${order.status}
+                                    </div>
+                                    <div class="col-md-6 text-end">
+                                        <strong>ยอดรวม:</strong> ${Number(order.total).toLocaleString()} บาท
+                                    </div>
+                                </div>
+                                <h6>รายการสินค้า:</h6>
+                                <div class="table-responsive">
+                                    <table class="table table-sm">
+                                        <thead>
+                                            <tr>
+                                                <th>สินค้า</th>
+                                                <th>จำนวน</th>
+                                                <th>ราคาต่อหน่วย</th>
+                                                <th>รวม</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            ${itemsHtml}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ปิด</button>
+                                <button type="button" class="btn btn-primary" onclick="showReceipt(${order.id})">ดูใบเสร็จ</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Remove existing modal if any
+            const existingModal = document.getElementById('orderDetailModal');
+            if (existingModal) {
+                existingModal.remove();
+            }
+            
+            // Add new modal to body
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+            
+            // Show the modal
+            new bootstrap.Modal(document.getElementById('orderDetailModal')).show();
+            
+        } else {
+            showAlert(data.error, 'danger');
+        }
+    } catch (error) {
+        console.error('Failed to load order detail:', error);
+        showAlert('ไม่สามารถโหลดรายละเอียดคำสั่งซื้อได้', 'danger');
+    }
+}
+
+async function updateOrderStatus(orderId, status) {
+    try {
+        const response = await fetch('api/orders.php?action=status', {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                order_id: orderId,
+                status: status
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showAlert(data.message, 'success');
+            loadAdminOrders(); // Reload orders list
+        } else {
+            showAlert(data.error, 'danger');
+        }
+    } catch (error) {
+        console.error('Failed to update order status:', error);
+        showAlert('ไม่สามารถอัปเดตสถานะคำสั่งซื้อได้', 'danger');
     }
 }
