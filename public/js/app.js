@@ -248,28 +248,36 @@ async function loadHomePage() {
     }
 }
 
-function createProductCard(product) {
+function createProductCard(product, index = 0) {
     const stockClass = product.stock < 10 ? 'stock-low' : product.stock < 50 ? 'stock-medium' : 'stock-high';
     const stockText = product.stock === 0 ? 'สินค้าหมด' : `คงเหลือ ${product.stock} ชิ้น`;
+    const stockIcon = product.stock === 0 ? 'fas fa-times-circle' : product.stock < 10 ? 'fas fa-exclamation-triangle' : 'fas fa-check-circle';
     
     return `
-        <div class="col-md-4 col-lg-3 mb-4">
+        <div class="col-md-4 col-lg-3 mb-4" style="animation: fadeIn 0.5s ease-in ${index * 0.1}s both;">
             <div class="card product-card h-100">
-                <img src="${product.image || 'https://via.placeholder.com/300x200?text=No+Image'}" 
-                     class="card-img-top product-image" alt="${product.name}">
+                <div class="position-relative">
+                    <img src="${product.image || 'https://via.placeholder.com/300x200?text=No+Image'}" 
+                         class="card-img-top product-image" alt="${product.name}">
+                    ${product.stock < 10 ? '<div class="position-absolute top-0 end-0 m-2"><span class="badge bg-warning"><i class="fas fa-exclamation-triangle me-1"></i>สต็อกต่ำ</span></div>' : ''}
+                    ${product.category_name ? `<div class="position-absolute top-0 start-0 m-2"><span class="badge" style="background: var(--accent-gradient);">${product.category_name}</span></div>` : ''}
+                </div>
                 <div class="card-body d-flex flex-column">
                     <h5 class="card-title">${product.name}</h5>
-                    <p class="card-text text-muted small flex-grow-1">${product.description || ''}</p>
+                    <p class="card-text text-muted small flex-grow-1">${product.description || 'ไม่มีรายละเอียด'}</p>
                     <div class="mb-2">
-                        <span class="price">${Number(product.price).toLocaleString()} บาท</span>
+                        <span class="price">${Number(product.price).toLocaleString()}</span>
+                        <span style="color: var(--text-muted); font-size: 0.9rem;"> บาท</span>
                     </div>
-                    <div class="mb-3">
+                    <div class="mb-3 d-flex align-items-center gap-2">
+                        <i class="${stockIcon} ${stockClass}"></i>
                         <small class="${stockClass}">${stockText}</small>
                     </div>
                     <button class="btn btn-primary w-100" 
-                            onclick="addToCart(${product.id})" 
+                            onclick="addToCartWithAnimation(${product.id}, this)" 
                             ${product.stock === 0 ? 'disabled' : ''}>
-                        <i class="fas fa-cart-plus"></i> เพิ่มลงตะกร้า
+                        <i class="fas fa-cart-plus me-2"></i>
+                        ${product.stock === 0 ? 'สินค้าหมด' : 'เพิ่มลงตะกร้า'}
                     </button>
                 </div>
             </div>
@@ -280,47 +288,99 @@ function createProductCard(product) {
 function loadContactPage() {
     const mainContent = document.getElementById('main-content');
     mainContent.innerHTML = `
-        <div class="container">
+        <div class="container fade-in">
             <div class="row justify-content-center">
-                <div class="col-md-8">
-                    <h2 class="mb-4">ติดต่อเรา</h2>
-                    <div class="card">
-                        <div class="card-body">
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <h5><i class="fas fa-map-marker-alt"></i> ที่อยู่</h5>
-                                    <p>123 ถนนตกปลา<br>
-                                    เขตปลาใหญ่ กรุงเทพฯ 10110</p>
-                                    
-                                    <h5><i class="fas fa-phone"></i> โทรศัพท์</h5>
-                                    <p>02-123-4567</p>
-                                    
-                                    <h5><i class="fas fa-envelope"></i> อีเมล</h5>
-                                    <p>info@fishingstore.com</p>
-                                    
-                                    <h5><i class="fas fa-clock"></i> เวลาทำการ</h5>
-                                    <p>จันทร์-ศุกร์: 8:00-18:00<br>
-                                    เสาร์-อาทิตย์: 9:00-17:00</p>
-                                </div>
-                                <div class="col-md-6">
-                                    <h5>ส่งข้อความถึงเรา</h5>
-                                    <form>
-                                        <div class="mb-3">
-                                            <label class="form-label">ชื่อ</label>
-                                            <input type="text" class="form-control" required>
-                                        </div>
-                                        <div class="mb-3">
-                                            <label class="form-label">อีเมล</label>
-                                            <input type="email" class="form-control" required>
-                                        </div>
-                                        <div class="mb-3">
-                                            <label class="form-label">ข้อความ</label>
-                                            <textarea class="form-control" rows="5" required></textarea>
-                                        </div>
-                                        <button type="submit" class="btn btn-primary">ส่งข้อความ</button>
-                                    </form>
+                <div class="col-md-10">
+                    <div class="text-center mb-5">
+                        <h2 style="font-family: 'Poppins', sans-serif; font-weight: 700; color: var(--text-primary);">
+                            <i class="fas fa-envelope me-3" style="color: var(--primary-color);"></i>ติดต่อเรา
+                        </h2>
+                        <p class="text-muted fs-5">เรายินดีที่จะได้รับฟังจากคุณ ติดต่อเราได้ทุกช่องทาง</p>
+                    </div>
+                    
+                    <div class="row g-4 mb-5">
+                        <div class="col-md-3 col-sm-6">
+                            <div class="card h-100 text-center" style="border-radius: 20px; border: 2px solid var(--border-color); transition: var(--transition-fast);">
+                                <div class="card-body p-4">
+                                    <div class="mb-3" style="width: 60px; height: 60px; background: var(--primary-gradient); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto;">
+                                        <i class="fas fa-map-marker-alt fa-lg text-white"></i>
+                                    </div>
+                                    <h6 class="fw-bold">ที่อยู่</h6>
+                                    <p class="text-muted small mb-0">123 ถนนตกปลา<br>เขตปลาใหญ่ กรุงเทพฯ 10110</p>
                                 </div>
                             </div>
+                        </div>
+                        
+                        <div class="col-md-3 col-sm-6">
+                            <div class="card h-100 text-center" style="border-radius: 20px; border: 2px solid var(--border-color); transition: var(--transition-fast);">
+                                <div class="card-body p-4">
+                                    <div class="mb-3" style="width: 60px; height: 60px; background: var(--success-gradient); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto;">
+                                        <i class="fas fa-phone fa-lg text-white"></i>
+                                    </div>
+                                    <h6 class="fw-bold">โทรศัพท์</h6>
+                                    <p class="text-muted small mb-0">02-123-4567<br>081-234-5678</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-3 col-sm-6">
+                            <div class="card h-100 text-center" style="border-radius: 20px; border: 2px solid var(--border-color); transition: var(--transition-fast);">
+                                <div class="card-body p-4">
+                                    <div class="mb-3" style="width: 60px; height: 60px; background: var(--warning-gradient); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto;">
+                                        <i class="fas fa-envelope fa-lg text-white"></i>
+                                    </div>
+                                    <h6 class="fw-bold">อีเมล</h6>
+                                    <p class="text-muted small mb-0">info@fishingstore.com<br>support@fishingstore.com</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-3 col-sm-6">
+                            <div class="card h-100 text-center" style="border-radius: 20px; border: 2px solid var(--border-color); transition: var(--transition-fast);">
+                                <div class="card-body p-4">
+                                    <div class="mb-3" style="width: 60px; height: 60px; background: var(--accent-gradient); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto;">
+                                        <i class="fas fa-clock fa-lg text-white"></i>
+                                    </div>
+                                    <h6 class="fw-bold">เวลาทำการ</h6>
+                                    <p class="text-muted small mb-0">จ.-ศ.: 8:00-18:00<br>ส.-อ.: 9:00-17:00</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="card" style="border-radius: 20px; border: none; box-shadow: var(--shadow-lg);">
+                        <div class="card-header text-center" style="background: var(--primary-gradient); color: white; border-radius: 20px 20px 0 0; padding: 2rem;">
+                            <h4 class="mb-0" style="font-family: 'Poppins', sans-serif; font-weight: 600;">
+                                <i class="fas fa-paper-plane me-2"></i>ส่งข้อความถึงเรา
+                            </h4>
+                            <p class="mb-0 opacity-75">เราจะตอบกลับภายใน 24 ชั่วโมง</p>
+                        </div>
+                        <div class="card-body p-4">
+                            <form onsubmit="handleContactSubmit(event)">
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label fw-bold">ชื่อ *</label>
+                                        <input type="text" class="form-control" required placeholder="กรุณากรอกชื่อของคุณ">
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label fw-bold">อีเมล *</label>
+                                        <input type="email" class="form-control" required placeholder="example@email.com">
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">หัวข้อ</label>
+                                    <input type="text" class="form-control" placeholder="หัวข้อที่ต้องการสอบถาม">
+                                </div>
+                                <div class="mb-4">
+                                    <label class="form-label fw-bold">ข้อความ *</label>
+                                    <textarea class="form-control" rows="6" required placeholder="กรุณาระบุรายละเอียดที่ต้องการสอบถาม..."></textarea>
+                                </div>
+                                <div class="text-center">
+                                    <button type="submit" class="btn btn-primary btn-lg" style="border-radius: 25px; padding: 1rem 3rem;">
+                                        <i class="fas fa-paper-plane me-2"></i>ส่งข้อความ
+                                    </button>
+                                </div>
+                            </form>
                         </div>
                     </div>
                 </div>
@@ -414,10 +474,14 @@ function updateProductsDisplay(data, title = 'สินค้าทั้งห�
     const mainContent = document.getElementById('main-content');
     
     let html = `
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <h2>${title}</h2>
+        <div class="d-flex justify-content-between align-items-center mb-4 fade-in">
+            <h2 style="font-family: 'Poppins', sans-serif; font-weight: 600; color: var(--text-primary);">
+                <i class="fas fa-store me-2" style="color: var(--primary-color);"></i>${title}
+            </h2>
             <div class="d-flex align-items-center gap-2">
-                <span class="text-muted">แสดง ${data.products.length} จาก ${data.total} รายการ</span>
+                <span class="badge" style="background: var(--accent-gradient); color: white; padding: 0.5rem 1rem; border-radius: 20px;">
+                    แสดง ${data.products.length} จาก ${data.total} รายการ
+                </span>
             </div>
         </div>
         <div class="row" id="products-container">
@@ -425,15 +489,20 @@ function updateProductsDisplay(data, title = 'สินค้าทั้งห�
     
     if (data.products.length === 0) {
         html += `
-            <div class="col-12 text-center py-5">
-                <i class="fas fa-search fa-3x text-muted mb-3"></i>
-                <h4>ไม่พบสินค้า</h4>
+            <div class="col-12 text-center py-5 fade-in">
+                <div style="background: var(--accent-gradient); width: 120px; height: 120px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 2rem;">
+                    <i class="fas fa-search fa-3x text-white"></i>
+                </div>
+                <h4 style="font-family: 'Poppins', sans-serif; font-weight: 600; color: var(--text-primary);">ไม่พบสินค้า</h4>
                 <p class="text-muted">ลองค้นหาด้วยคำอื่น หรือดูสินค้าทั้งหมด</p>
+                <button class="btn btn-primary mt-3" onclick="loadPage('home')" style="border-radius: 25px; padding: 0.75rem 2rem;">
+                    <i class="fas fa-home me-2"></i>กลับหน้าแรก
+                </button>
             </div>
         `;
     } else {
-        data.products.forEach(product => {
-            html += createProductCard(product);
+        data.products.forEach((product, index) => {
+            html += createProductCard(product, index);
         });
     }
     
@@ -473,7 +542,15 @@ async function addToCart(productId, quantity = 1) {
         
         if (data.success) {
             cartCount = data.count;
-            document.getElementById('cart-count').textContent = cartCount;
+            const cartCountElement = document.getElementById('cart-count');
+            cartCountElement.textContent = cartCount;
+            
+            // Animate cart badge
+            cartCountElement.style.animation = 'pulse 0.6s ease-in-out';
+            setTimeout(() => {
+                cartCountElement.style.animation = '';
+            }, 600);
+            
             showAlert(data.message, 'success');
         } else {
             showAlert(data.error, 'danger');
@@ -481,6 +558,31 @@ async function addToCart(productId, quantity = 1) {
     } catch (error) {
         console.error('Failed to add to cart:', error);
         showAlert('ไม่สามารถเพิ่มสินค้าลงตะกร้าได้', 'danger');
+    }
+}
+
+async function addToCartWithAnimation(productId, buttonElement) {
+    // Animate button
+    const originalText = buttonElement.innerHTML;
+    buttonElement.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>กำลังเพิ่ม...';
+    buttonElement.disabled = true;
+    
+    try {
+        await addToCart(productId);
+        
+        // Success animation
+        buttonElement.innerHTML = '<i class="fas fa-check me-2"></i>เพิ่มแล้ว!';
+        buttonElement.style.background = 'var(--success-gradient)';
+        
+        setTimeout(() => {
+            buttonElement.innerHTML = originalText;
+            buttonElement.style.background = '';
+            buttonElement.disabled = false;
+        }, 1500);
+        
+    } catch (error) {
+        buttonElement.innerHTML = originalText;
+        buttonElement.disabled = false;
     }
 }
 
@@ -2025,3 +2127,92 @@ async function updateOrderStatus(orderId, status) {
         showAlert('ไม่สามารถอัปเดตสถานะคำสั่งซื้อได้', 'danger');
     }
 }
+
+// Contact form handler
+function handleContactSubmit(event) {
+    event.preventDefault();
+    
+    const form = event.target;
+    const formData = new FormData(form);
+    const button = form.querySelector('button[type="submit"]');
+    const originalText = button.innerHTML;
+    
+    // Animate button
+    button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>กำลังส่ง...';
+    button.disabled = true;
+    
+    // Simulate sending (in real app, this would call an API)
+    setTimeout(() => {
+        button.innerHTML = '<i class="fas fa-check me-2"></i>ส่งสำเร็จ!';
+        button.style.background = 'var(--success-gradient)';
+        
+        showAlert('ข้อความของคุณถูกส่งเรียบร้อยแล้ว เราจะติดต่อกลับภายใน 24 ชั่วโมง', 'success');
+        
+        form.reset();
+        
+        setTimeout(() => {
+            button.innerHTML = originalText;
+            button.style.background = '';
+            button.disabled = false;
+        }, 2000);
+    }, 1500);
+}
+
+// Enhanced alert function with better animations
+function showAlert(message, type = 'info') {
+    // Remove existing alerts
+    document.querySelectorAll('.alert-float').forEach(alert => alert.remove());
+    
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-float alert-dismissible fade show`;
+    
+    const icon = {
+        'success': 'fas fa-check-circle',
+        'danger': 'fas fa-exclamation-triangle',
+        'warning': 'fas fa-exclamation-circle',
+        'info': 'fas fa-info-circle'
+    }[type] || 'fas fa-info-circle';
+    
+    alertDiv.innerHTML = `
+        <div class="d-flex align-items-center">
+            <i class="${icon} me-2"></i>
+            <span>${message}</span>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.body.appendChild(alertDiv);
+    
+    // Auto dismiss after 5 seconds
+    setTimeout(() => {
+        if (alertDiv.parentNode) {
+            alertDiv.classList.add('fade');
+            setTimeout(() => {
+                if (alertDiv.parentNode) {
+                    alertDiv.parentNode.removeChild(alertDiv);
+                }
+            }, 150);
+        }
+    }, 5000);
+}
+
+// Add CSS hover effects to contact cards
+document.addEventListener('DOMContentLoaded', function() {
+    // Add hover effects to contact cards when they're loaded
+    setTimeout(() => {
+        const contactCards = document.querySelectorAll('.card');
+        contactCards.forEach(card => {
+            card.addEventListener('mouseenter', function() {
+                this.style.transform = 'translateY(-5px)';
+                this.style.boxShadow = 'var(--shadow-xl)';
+                this.style.borderColor = 'var(--primary-color)';
+            });
+            
+            card.addEventListener('mouseleave', function() {
+                this.style.transform = '';
+                this.style.boxShadow = '';
+                this.style.borderColor = '';
+            });
+        });
+    }, 1000);
+});

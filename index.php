@@ -17,11 +17,12 @@ if (!file_exists(__DIR__ . '/data/app.db')) {
     <link href="public/css/style.css" rel="stylesheet">
 </head>
 <body>
-    <!-- Top Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <!-- Modern Top Navigation -->
+    <nav class="navbar navbar-expand-lg">
         <div class="container-fluid">
             <a class="navbar-brand" href="#" onclick="loadPage('home')">
-                <i class="fas fa-fish"></i> ร้านอุปกรณ์ตกปลา
+                <i class="fas fa-fish"></i> 
+                <span>ร้านอุปกรณ์ตกปลา</span>
             </a>
             
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
@@ -36,7 +37,7 @@ if (!file_exists(__DIR__ . '/data/app.db')) {
                     <li class="nav-item">
                         <a class="nav-link" href="#" onclick="showCart()">
                             <i class="fas fa-shopping-cart"></i> ตะกร้า 
-                            <span id="cart-count" class="badge bg-danger">0</span>
+                            <span id="cart-count" class="badge">0</span>
                         </a>
                     </li>
                     <li class="nav-item">
@@ -57,10 +58,10 @@ if (!file_exists(__DIR__ . '/data/app.db')) {
             <div class="col-md-3 bg-light p-3">
                 <!-- Search Box -->
                 <div class="mb-4">
-                    <h5>ค้นหาสินค้า</h5>
+                    <h5><i class="fas fa-search"></i> ค้นหาสินค้า</h5>
                     <div class="input-group">
-                        <input type="text" id="search-input" class="form-control" placeholder="ค้นหา...">
-                        <button class="btn btn-outline-secondary" onclick="searchProducts()">
+                        <input type="text" id="search-input" class="form-control" placeholder="ค้นหาสินค้าที่ต้องการ...">
+                        <button class="btn btn-primary" onclick="searchProducts()">
                             <i class="fas fa-search"></i>
                         </button>
                     </div>
@@ -68,15 +69,15 @@ if (!file_exists(__DIR__ . '/data/app.db')) {
 
                 <!-- Categories -->
                 <div class="mb-4">
-                    <h5>หมวดหมู่สินค้า</h5>
+                    <h5><i class="fas fa-tags"></i> หมวดหมู่สินค้า</h5>
                     <div id="categories-list">
                         <!-- Categories will be loaded here -->
                     </div>
                 </div>
 
                 <!-- Admin Panel (only visible for admin users) -->
-                <div id="admin-panel" class="mb-4" style="display: none;">
-                    <h5 class="text-danger">แผงควบคุมผู้ดูแล</h5>
+                <div id="admin-panel" class="admin-panel mb-4" style="display: none;">
+                    <h5><i class="fas fa-crown"></i> แผงควบคุมผู้ดูแล</h5>
                     <div class="list-group">
                         <button class="list-group-item list-group-item-action" onclick="showAdminTab('products')">
                             <i class="fas fa-box"></i> จัดการสินค้า
