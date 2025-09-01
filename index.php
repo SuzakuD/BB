@@ -1,545 +1,253 @@
 <?php
-require_once 'config.php';
+require_once 'config/database.php';
 
-$pdo = getConnection();
-
-// Get categories
-$stmt = $pdo->query("SELECT * FROM categories ORDER BY name");
-$categories = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-// Get products with pagination
-$page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
-$limit = 8;
-$offset = ($page - 1) * $limit;
-
-$category_id = isset($_GET['category']) ? (int)$_GET['category'] : 0;
-$search = isset($_GET['search']) ? sanitizeInput($_GET['search']) : '';
-
-$where = "WHERE 1=1";
-$params = [];
-
-if ($category_id > 0) {
-    $where .= " AND EXISTS (SELECT 1 FROM product_category pc WHERE pc.product_id = p.id AND pc.category_id = ?)";
-    $params[] = $category_id;
-}
-
-if ($search) {
-    $where .= " AND (p.name LIKE ? OR p.description LIKE ?)";
-    $params[] = "%$search%";
-    $params[] = "%$search%";
-}
-
-$stmt = $pdo->prepare("SELECT p.* FROM products p $where ORDER BY p.id DESC LIMIT $limit OFFSET $offset");
-$stmt->execute($params);
-$products = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-// Get total count for pagination
-$count_stmt = $pdo->prepare("SELECT COUNT(*) FROM products p $where");
-$count_stmt->execute($params);
-$total_products = $count_stmt->fetchColumn();
-$total_pages = ceil($total_products / $limit);
-
-// Get cart count
-$cart_count = 0;
-if (isset($_SESSION['cart'])) {
-    $cart_count = array_sum($_SESSION['cart']);
+// Check if database exists, if not initialize it
+if (!file_exists(__DIR__ . '/data/app.db')) {
+    include 'data/init_db.php';
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="th">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Toom Tam Fishing - ร้านขายอุปกรณ์ตกปลา</title>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #f5f5f5;
-            line-height: 1.6;
-        }
-
-        /* Header */
-        .header {
-            background: linear-gradient(135deg, #2c3e50, #3498db);
-            color: white;
-            padding: 1rem 0;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-
-        .header-content {
-            max-width: 1200px;
-            margin: 0 auto;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 0 20px;
-        }
-
-        .logo {
-            font-size: 2rem;
-            font-weight: bold;
-            color: white;
-            text-decoration: none;
-        }
-
-        .nav-menu {
-            display: flex;
-            list-style: none;
-            gap: 2rem;
-        }
-
-        .nav-menu a {
-            color: white;
-            text-decoration: none;
-            padding: 0.5rem 1rem;
-            border-radius: 5px;
-            transition: background 0.3s;
-        }
-
-        .nav-menu a:hover {
-            background: rgba(255,255,255,0.2);
-        }
-
-        .cart-icon {
-            position: relative;
-            font-size: 1.5rem;
-        }
-
-        .cart-count {
-            position: absolute;
-            top: -8px;
-            right: -8px;
-            background: #e74c3c;
-            color: white;
-            border-radius: 50%;
-            width: 20px;
-            height: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.8rem;
-        }
-
-        /* Main Container */
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            display: grid;
-            grid-template-columns: 250px 1fr;
-            gap: 20px;
-            padding: 20px;
-        }
-
-        /* Sidebar */
-        .sidebar {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            height: fit-content;
-        }
-
-        .sidebar h3 {
-            margin-bottom: 15px;
-            color: #2c3e50;
-            border-bottom: 2px solid #3498db;
-            padding-bottom: 10px;
-        }
-
-        .search-box {
-            margin-bottom: 20px;
-        }
-
-        .search-box input {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            font-size: 14px;
-        }
-
-        .search-box button {
-            width: 100%;
-            padding: 10px;
-            background: #3498db;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            margin-top: 10px;
-            cursor: pointer;
-            transition: background 0.3s;
-        }
-
-        .search-box button:hover {
-            background: #2980b9;
-        }
-
-        .category-list {
-            list-style: none;
-        }
-
-        .category-list li {
-            margin-bottom: 10px;
-        }
-
-        .category-list a {
-            display: block;
-            padding: 10px;
-            text-decoration: none;
-            color: #2c3e50;
-            border-radius: 5px;
-            transition: background 0.3s;
-        }
-
-        .category-list a:hover,
-        .category-list a.active {
-            background: #3498db;
-            color: white;
-        }
-
-        /* Content Area */
-        .content {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-
-        .content h2 {
-            margin-bottom: 20px;
-            color: #2c3e50;
-        }
-
-        /* Product Grid */
-        .product-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-
-        .product-card {
-            border: 1px solid #ddd;
-            border-radius: 10px;
-            overflow: hidden;
-            transition: transform 0.3s, box-shadow 0.3s;
-        }
-
-        .product-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 5px 20px rgba(0,0,0,0.15);
-        }
-
-        .product-image {
-            width: 100%;
-            height: 200px;
-            background: linear-gradient(135deg, #ecf0f1, #bdc3c7);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #7f8c8d;
-            font-size: 3rem;
-        }
-
-        .product-info {
-            padding: 15px;
-        }
-
-        .product-name {
-            font-size: 1.1rem;
-            font-weight: bold;
-            margin-bottom: 8px;
-            color: #2c3e50;
-        }
-
-        .product-description {
-            color: #7f8c8d;
-            font-size: 0.9rem;
-            margin-bottom: 10px;
-            line-height: 1.4;
-        }
-
-        .product-price {
-            font-size: 1.2rem;
-            font-weight: bold;
-            color: #e74c3c;
-            margin-bottom: 10px;
-        }
-
-        .product-stock {
-            color: #27ae60;
-            font-size: 0.9rem;
-            margin-bottom: 15px;
-        }
-
-        .add-to-cart {
-            width: 100%;
-            padding: 10px;
-            background: #27ae60;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            transition: background 0.3s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 5px;
-        }
-
-        .add-to-cart:hover {
-            background: #219a52;
-        }
-
-        .add-to-cart:disabled {
-            background: #95a5a6;
-            cursor: not-allowed;
-        }
-
-        /* Pagination */
-        .pagination {
-            display: flex;
-            justify-content: center;
-            gap: 10px;
-            margin-top: 20px;
-        }
-
-        .pagination a,
-        .pagination span {
-            padding: 8px 12px;
-            text-decoration: none;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            color: #2c3e50;
-        }
-
-        .pagination a:hover {
-            background: #3498db;
-            color: white;
-        }
-
-        .pagination .current {
-            background: #3498db;
-            color: white;
-        }
-
-        /* Alert Messages */
-        .alert {
-            padding: 15px;
-            margin-bottom: 20px;
-            border-radius: 5px;
-            border-left: 4px solid;
-        }
-
-        .alert-success {
-            background: #d4edda;
-            border-color: #27ae60;
-            color: #155724;
-        }
-
-        .alert-error {
-            background: #f8d7da;
-            border-color: #e74c3c;
-            color: #721c24;
-        }
-
-        /* Responsive */
-        @media (max-width: 768px) {
-            .container {
-                grid-template-columns: 1fr;
-            }
-
-            .header-content {
-                flex-direction: column;
-                gap: 1rem;
-            }
-
-            .nav-menu {
-                flex-direction: column;
-                gap: 0.5rem;
-            }
-
-            .product-grid {
-                grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            }
-        }
-    </style>
+    <title>ร้านอุปกรณ์ตกปลา</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="public/css/style.css" rel="stylesheet">
 </head>
 <body>
-    <header class="header">
-        <div class="header-content">
-            <a href="index.php" class="logo">
-                <i class="fas fa-fish"></i> Toom Tam Fishing
+    <!-- Top Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#" onclick="loadPage('home')">
+                <i class="fas fa-fish"></i> ร้านอุปกรณ์ตกปลา
             </a>
-            <nav>
-                <ul class="nav-menu">
-                    <li><a href="index.php"><i class="fas fa-home"></i> หน้าแรก</a></li>
-                    <li><a href="cart.php"><i class="fas fa-shopping-cart"></i> ตะกร้า</a></li>
-                    <li><a href="contact.php"><i class="fas fa-phone"></i> ติดต่อ</a></li>
-                    <?php if (isLoggedIn()): ?>
-                        <li><a href="orders.php"><i class="fas fa-receipt"></i> คำสั่งซื้อ</a></li>
-                        <li><a href="logout.php"><i class="fas fa-sign-out-alt"></i> ออกจากระบบ</a></li>
-                    <?php else: ?>
-                        <li><a href="login.php"><i class="fas fa-sign-in-alt"></i> เข้าสู่ระบบ</a></li>
-                        <li><a href="register.php"><i class="fas fa-user-plus"></i> สมัครสมาชิก</a></li>
-                    <?php endif; ?>
-                </ul>
-            </nav>
-            <a href="cart.php" class="cart-icon">
-                <i class="fas fa-shopping-cart"></i>
-                <?php if ($cart_count > 0): ?>
-                    <span class="cart-count"><?php echo $cart_count; ?></span>
-                <?php endif; ?>
-            </a>
-        </div>
-    </header>
-
-    <div class="container">
-        <aside class="sidebar">
-            <h3><i class="fas fa-search"></i> ค้นหาสินค้า</h3>
-            <div class="search-box">
-                <form method="GET">
-                    <input type="text" name="search" placeholder="ค้นหาสินค้า..." value="<?php echo htmlspecialchars($search); ?>">
-                    <button type="submit"><i class="fas fa-search"></i> ค้นหา</button>
-                </form>
-            </div>
-
-            <h3><i class="fas fa-list"></i> หมวดหมู่สินค้า</h3>
-            <ul class="category-list">
-                <li><a href="index.php" class="<?php echo $category_id == 0 ? 'active' : ''; ?>">ทั้งหมด</a></li>
-                <?php foreach ($categories as $category): ?>
-                    <li>
-                        <a href="index.php?category=<?php echo $category['id']; ?>"
-                           class="<?php echo $category_id == $category['id'] ? 'active' : ''; ?>">
-                            <?php echo htmlspecialchars($category['name']); ?>
+            
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" onclick="loadPage('home')">หน้าแรก</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" onclick="showCart()">
+                            <i class="fas fa-shopping-cart"></i> ตะกร้า 
+                            <span id="cart-count" class="badge bg-danger">0</span>
                         </a>
                     </li>
-                <?php endforeach; ?>
-            </ul>
-        </aside>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" onclick="loadPage('contact')">ติดต่อ</a>
+                    </li>
+                </ul>
+                
+                <ul class="navbar-nav" id="auth-nav">
+                    <!-- Authentication menu will be loaded here -->
+                </ul>
+            </div>
+        </div>
+    </nav>
 
-        <main class="content">
-            <?php if (isset($_SESSION['message'])): ?>
-                <div class="alert alert-<?php echo $_SESSION['message_type']; ?>">
-                    <?php
-                    echo $_SESSION['message'];
-                    unset($_SESSION['message']);
-                    unset($_SESSION['message_type']);
-                    ?>
-                </div>
-            <?php endif; ?>
-
-            <h2>
-                <?php if ($category_id > 0): ?>
-                    <?php
-                    $current_category = array_filter($categories, function($c) use ($category_id) {
-                        return $c['id'] == $category_id;
-                    });
-                    $current_category = array_shift($current_category);
-                    echo htmlspecialchars($current_category['name']);
-                    ?>
-                <?php elseif ($search): ?>
-                    ผลการค้นหา "<?php echo htmlspecialchars($search); ?>"
-                <?php else: ?>
-                    สินค้าทั้งหมด
-                <?php endif; ?>
-            </h2>
-
-            <?php if (empty($products)): ?>
-                <p>ไม่พบสินค้าที่ค้นหา</p>
-            <?php else: ?>
-                <div class="product-grid">
-                    <?php foreach ($products as $product): ?>
-                        <div class="product-card">
-                            <a href="product.php?id=<?php echo $product['id']; ?>" style="text-decoration: none; color: inherit;">
-                                <div class="product-image">
-                                    <i class="fas fa-fish"></i>
-                                </div>
-                                <div class="product-info">
-                                    <h4 class="product-name"><?php echo htmlspecialchars($product['name']); ?></h4>
-                                    <p class="product-description"><?php echo htmlspecialchars($product['description']); ?></p>
-                                    <div class="product-price"><?php echo formatPrice($product['price']); ?></div>
-                                    <div class="product-stock">
-                                        <?php if ($product['stock'] > 0): ?>
-                                            <i class="fas fa-check-circle"></i> คงเหลือ <?php echo $product['stock']; ?> ชิ้น
-                                        <?php else: ?>
-                                            <i class="fas fa-times-circle" style="color: #e74c3c;"></i> สินค้าหมด
-                                        <?php endif; ?>
-                                    </div>
-                                </div>
-                            </a>
-                            <button class="add-to-cart"
-                                    onclick="addToCart(<?php echo $product['id']; ?>)"
-                                    <?php echo $product['stock'] <= 0 ? 'disabled' : ''; ?>>
-                                <i class="fas fa-cart-plus"></i> ใส่ตะกร้า
-                            </button>
-                        </div>
-                    <?php endforeach; ?>
-                </div>
-
-                <?php if ($total_pages > 1): ?>
-                    <div class="pagination">
-                        <?php if ($page > 1): ?>
-                            <a href="?page=<?php echo $page-1; ?>&category=<?php echo $category_id; ?>&search=<?php echo urlencode($search); ?>">&laquo; ก่อนหน้า</a>
-                        <?php endif; ?>
-
-                        <?php for ($i = 1; $i <= $total_pages; $i++): ?>
-                            <?php if ($i == $page): ?>
-                                <span class="current"><?php echo $i; ?></span>
-                            <?php else: ?>
-                                <a href="?page=<?php echo $i; ?>&category=<?php echo $category_id; ?>&search=<?php echo urlencode($search); ?>"><?php echo $i; ?></a>
-                            <?php endif; ?>
-                        <?php endfor; ?>
-
-                        <?php if ($page < $total_pages): ?>
-                            <a href="?page=<?php echo $page+1; ?>&category=<?php echo $category_id; ?>&search=<?php echo urlencode($search); ?>">ถัดไป &raquo;</a>
-                        <?php endif; ?>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Left Sidebar -->
+            <div class="col-md-3 bg-light p-3">
+                <!-- Search Box -->
+                <div class="mb-4">
+                    <h5>ค้นหาสินค้า</h5>
+                    <div class="input-group">
+                        <input type="text" id="search-input" class="form-control" placeholder="ค้นหา...">
+                        <button class="btn btn-outline-secondary" onclick="searchProducts()">
+                            <i class="fas fa-search"></i>
+                        </button>
                     </div>
-                <?php endif; ?>
-            <?php endif; ?>
-        </main>
+                </div>
+
+                <!-- Categories -->
+                <div class="mb-4">
+                    <h5>หมวดหมู่สินค้า</h5>
+                    <div id="categories-list">
+                        <!-- Categories will be loaded here -->
+                    </div>
+                </div>
+
+                <!-- Admin Panel (only visible for admin users) -->
+                <div id="admin-panel" class="mb-4" style="display: none;">
+                    <h5 class="text-danger">แผงควบคุมผู้ดูแล</h5>
+                    <div class="list-group">
+                        <button class="list-group-item list-group-item-action" onclick="showAdminTab('products')">
+                            <i class="fas fa-box"></i> จัดการสินค้า
+                        </button>
+                        <button class="list-group-item list-group-item-action" onclick="showAdminTab('categories')">
+                            <i class="fas fa-tags"></i> จัดการหมวดหมู่
+                        </button>
+                        <button class="list-group-item list-group-item-action" onclick="showAdminTab('users')">
+                            <i class="fas fa-users"></i> จัดการผู้ใช้
+                        </button>
+                        <button class="list-group-item list-group-item-action" onclick="showAdminTab('orders')">
+                            <i class="fas fa-shopping-bag"></i> จัดการคำสั่งซื้อ
+                        </button>
+                        <button class="list-group-item list-group-item-action" onclick="showAdminTab('promotions')">
+                            <i class="fas fa-percent"></i> จัดการโปรโมชั่น
+                        </button>
+                        <button class="list-group-item list-group-item-action" onclick="showAdminTab('reports')">
+                            <i class="fas fa-chart-bar"></i> รายงาน
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Content Area -->
+            <div class="col-md-9">
+                <div id="main-content">
+                    <!-- Main content will be loaded here -->
+                </div>
+
+                <!-- Admin Content Area -->
+                <div id="admin-content" style="display: none;">
+                    <!-- Admin content will be loaded here -->
+                </div>
+            </div>
+        </div>
     </div>
 
-    <script>
-        function addToCart(productId) {
-            fetch('add_to_cart.php', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: 'product_id=' + productId
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    // Update cart count
-                    const cartCount = document.querySelector('.cart-count');
-                    if (cartCount) {
-                        cartCount.textContent = data.cart_count;
-                    } else if (data.cart_count > 0) {
-                        const cartIcon = document.querySelector('.cart-icon');
-                        cartIcon.innerHTML += '<span class="cart-count">' + data.cart_count + '</span>';
-                    }
+    <!-- Login Modal -->
+    <div class="modal fade" id="loginModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">เข้าสู่ระบบ</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="login-form">
+                        <div class="mb-3">
+                            <label for="login-username" class="form-label">ชื่อผู้ใช้</label>
+                            <input type="text" class="form-control" id="login-username" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="login-password" class="form-label">รหัสผ่าน</label>
+                            <input type="password" class="form-control" id="login-password" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100">เข้าสู่ระบบ</button>
+                    </form>
+                    <div id="login-message" class="mt-3"></div>
+                </div>
+            </div>
+        </div>
+    </div>
 
-                    // Show success message
-                    alert('เพิ่มสินค้าลงตะกร้าเรียบร้อยแล้ว');
-                } else {
-                    alert('เกิดข้อผิดพลาด: ' + data.message);
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('เกิดข้อผิดพลาดในการเพิ่มสินค้า');
-            });
-        }
-    </script>
+    <!-- Register Modal -->
+    <div class="modal fade" id="registerModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">สมัครสมาชิก</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="register-form">
+                        <div class="mb-3">
+                            <label for="register-username" class="form-label">ชื่อผู้ใช้</label>
+                            <input type="text" class="form-control" id="register-username" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="register-password" class="form-label">รหัสผ่าน</label>
+                            <input type="password" class="form-control" id="register-password" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="register-confirm-password" class="form-label">ยืนยันรหัสผ่าน</label>
+                            <input type="password" class="form-control" id="register-confirm-password" required>
+                        </div>
+                        <button type="submit" class="btn btn-success w-100">สมัครสมาชิก</button>
+                    </form>
+                    <div id="register-message" class="mt-3"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cart Modal -->
+    <div class="modal fade" id="cartModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">ตะกร้าสินค้า</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="cart-items">
+                        <!-- Cart items will be loaded here -->
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center mt-3">
+                        <h5>รวม: <span id="cart-total">0</span> บาท</h5>
+                        <button class="btn btn-success" onclick="showCheckout()" id="checkout-btn">ชำระเงิน</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Checkout Modal -->
+    <div class="modal fade" id="checkoutModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">ชำระเงิน</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="checkout-content">
+                        <!-- Checkout content will be loaded here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Order Confirmation Modal -->
+    <div class="modal fade" id="orderConfirmModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">ยืนยันการสั่งซื้อ</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="order-confirmation-content">
+                        <!-- Order confirmation content will be loaded here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Receipt Modal -->
+    <div class="modal fade" id="receiptModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">ใบเสร็จรับเงิน</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="receipt-content">
+                        <!-- Receipt content will be loaded here -->
+                    </div>
+                    <div class="text-center mt-3">
+                        <button class="btn btn-primary" onclick="printReceipt()">
+                            <i class="fas fa-print"></i> พิมพ์ใบเสร็จ
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="public/js/app.js"></script>
 </body>
 </html>

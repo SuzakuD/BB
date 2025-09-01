@@ -1,0 +1,267 @@
+/* Custom styles for fishing equipment e-commerce SPA */
+
+body {
+    font-family: 'Sarabun', sans-serif;
+    background-color: #f8f9fa;
+}
+
+.navbar-brand {
+    font-weight: bold;
+    font-size: 1.5rem;
+}
+
+.sidebar {
+    background-color: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.product-card {
+    transition: transform 0.2s;
+    border: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+}
+
+.product-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+}
+
+.product-image {
+    height: 200px;
+    object-fit: cover;
+}
+
+.category-item {
+    cursor: pointer;
+    padding: 8px 12px;
+    border-radius: 4px;
+    margin-bottom: 4px;
+    transition: background-color 0.2s;
+}
+
+.category-item:hover {
+    background-color: #e9ecef;
+}
+
+.category-item.active {
+    background-color: #007bff;
+    color: white;
+}
+
+.cart-item {
+    border-bottom: 1px solid #eee;
+    padding: 15px 0;
+}
+
+.cart-item:last-child {
+    border-bottom: none;
+}
+
+.quantity-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.quantity-btn {
+    width: 30px;
+    height: 30px;
+    border: 1px solid #ddd;
+    background: white;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.quantity-btn:hover {
+    background-color: #f8f9fa;
+}
+
+.admin-tab {
+    background-color: white;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.admin-table {
+    background-color: white;
+}
+
+.status-badge {
+    font-size: 0.8rem;
+    padding: 4px 8px;
+}
+
+.receipt {
+    background: white;
+    padding: 30px;
+    border: 1px solid #ddd;
+}
+
+.receipt-header {
+    text-align: center;
+    border-bottom: 2px solid #333;
+    padding-bottom: 20px;
+    margin-bottom: 20px;
+}
+
+.receipt-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 5px 0;
+    border-bottom: 1px solid #eee;
+}
+
+.receipt-total {
+    border-top: 2px solid #333;
+    padding-top: 10px;
+    margin-top: 10px;
+    font-weight: bold;
+    font-size: 1.2rem;
+}
+
+/* Print styles */
+@media print {
+    body * {
+        visibility: hidden;
+    }
+    
+    .receipt, .receipt * {
+        visibility: visible;
+    }
+    
+    .receipt {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+    }
+    
+    .btn {
+        display: none !important;
+    }
+}
+
+/* Loading spinner */
+.spinner {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 3px solid rgba(255,255,255,.3);
+    border-radius: 50%;
+    border-top-color: #fff;
+    animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Alert styles */
+.alert-float {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 9999;
+    min-width: 300px;
+}
+
+/* Form validation */
+.is-invalid {
+    border-color: #dc3545;
+}
+
+.invalid-feedback {
+    display: block;
+    color: #dc3545;
+    font-size: 0.875rem;
+    margin-top: 0.25rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .product-card {
+        margin-bottom: 15px;
+    }
+    
+    .modal-dialog {
+        margin: 10px;
+    }
+    
+    .receipt {
+        padding: 15px;
+    }
+}
+
+/* Stock indicator */
+.stock-low {
+    color: #dc3545;
+    font-weight: bold;
+}
+
+.stock-medium {
+    color: #ffc107;
+    font-weight: bold;
+}
+
+.stock-high {
+    color: #28a745;
+    font-weight: bold;
+}
+
+/* Price formatting */
+.price {
+    font-weight: bold;
+    color: #007bff;
+    font-size: 1.1rem;
+}
+
+.original-price {
+    text-decoration: line-through;
+    color: #6c757d;
+    font-size: 0.9rem;
+}
+
+/* Search highlight */
+.search-highlight {
+    background-color: yellow;
+    padding: 1px 2px;
+}
+
+/* Admin panel styling */
+.admin-panel {
+    border-left: 4px solid #dc3545;
+    padding-left: 15px;
+}
+
+.admin-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.stat-card {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    text-align: center;
+}
+
+.stat-number {
+    font-size: 2rem;
+    font-weight: bold;
+    color: #007bff;
+}
+
+.stat-label {
+    color: #6c757d;
+    font-size: 0.9rem;
+}
