@@ -1,10 +1,22 @@
 <?php
 session_start();
-include 'db_connect.php';
+require_once 'config.php';
 
 // ตรวจสอบว่า login เป็น admin หรือไม่
-if (!isset($_SESSION['user_id']) || $_SESSION['username'] != 'admin') {
+if (!isset($_SESSION['user_id'])) {
     header("Location: login.php");
+    exit();
+}
+
+$pdo = getConnection();
+
+// ตรวจสอบว่าเป็น admin
+$stmt = $pdo->prepare("SELECT username, role FROM users WHERE id = ?");
+$stmt->execute([$_SESSION['user_id']]);
+$user = $stmt->fetch();
+
+if (!$user || $user['username'] !== 'admin') {
+    header("Location: index.php");
     exit();
 }
 
@@ -12,8 +24,8 @@ if (!isset($_SESSION['user_id']) || $_SESSION['username'] != 'admin') {
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     // เพิ่มสินค้าใหม่
     if (isset($_POST['add_product'])) {
-        $name = mysqli_real_escape_string($conn, $_POST['product_name']);
-        $description = mysqli_real_escape_string($conn, $_POST['description']);
+        $name = $_POST['product_name'];
+        $description = $_POST['description'];
         $price = (float)$_POST['price'];
         $stock = (int)$_POST['stock'];
         $category_id = (int)$_POST['category_id'];
@@ -21,83 +33,139 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         // จัดการอัพโหลดรูปภาพ
         $image_url = '';
         if (isset($_FILES['image']) && $_FILES['image']['error'] == 0) {
-            $target_dir = "uploads/";
-            if (!file_exists($target_dir)) {
-                mkdir($target_dir, 0777, true);
+            $image_url = uploadImage($_FILES['image'], $name);
+            if (!$image_url) {
+                $error_msg = "ไม่สามารถอัพโหลดรูปภาพได้";
             }
-            $image_url = $target_dir . basename($_FILES["image"]["name"]);
-            move_uploaded_file($_FILES["image"]["tmp_name"], $image_url);
         }
         
-        $query = "INSERT INTO products (name, description, price, stock_quantity, category_id, image_url) 
-                  VALUES ('$name', '$description', '$price', '$stock', '$category_id', '$image_url')";
-        mysqli_query($conn, $query);
-        $success_msg = "เพิ่มสินค้าสำเร็จ!";
+        if (!isset($error_msg)) {
+            try {
+                $stmt = $pdo->prepare("INSERT INTO products (name, description, price, stock, category_id, image) 
+                                      VALUES (?, ?, ?, ?, ?, ?)");
+                $stmt->execute([$name, $description, $price, $stock, $category_id, $image_url]);
+                $success_msg = "เพิ่มสินค้าสำเร็จ!";
+            } catch (Exception $e) {
+                $error_msg = "เกิดข้อผิดพลาด: " . $e->getMessage();
+            }
+        }
     }
     
     // เพิ่มหมวดหมู่ใหม่
     if (isset($_POST['add_category'])) {
-        $category_name = mysqli_real_escape_string($conn, $_POST['category_name']);
-        $query = "INSERT INTO categories (name) VALUES ('$category_name')";
-        mysqli_query($conn, $query);
-        $success_msg = "เพิ่มหมวดหมู่สำเร็จ!";
+        $category_name = $_POST['category_name'];
+        try {
+            $stmt = $pdo->prepare("INSERT INTO categories (name) VALUES (?)");
+            $stmt->execute([$category_name]);
+            $success_msg = "เพิ่มหมวดหมู่สำเร็จ!";
+        } catch (Exception $e) {
+            $error_msg = "เกิดข้อผิดพลาด: " . $e->getMessage();
+        }
     }
     
     // อัพเดตสถานะคำสั่งซื้อ
     if (isset($_POST['update_order_status'])) {
         $order_id = (int)$_POST['order_id'];
-        $status = mysqli_real_escape_string($conn, $_POST['status']);
-        $query = "UPDATE orders SET status = '$status' WHERE id = $order_id";
-        mysqli_query($conn, $query);
-        $success_msg = "อัพเดตสถานะคำสั่งซื้อสำเร็จ!";
+        $status = $_POST['status'];
+        try {
+            $stmt = $pdo->prepare("UPDATE orders SET status = ? WHERE id = ?");
+            $stmt->execute([$status, $order_id]);
+            $success_msg = "อัพเดตสถานะคำสั่งซื้อสำเร็จ!";
+        } catch (Exception $e) {
+            $error_msg = "เกิดข้อผิดพลาด: " . $e->getMessage();
+        }
     }
     
     // ลบสินค้า
     if (isset($_POST['delete_product'])) {
         $product_id = (int)$_POST['product_id'];
-        $query = "DELETE FROM products WHERE id = $product_id";
-        mysqli_query($conn, $query);
-        $success_msg = "ลบสินค้าสำเร็จ!";
+        try {
+            $stmt = $pdo->prepare("DELETE FROM products WHERE id = ?");
+            $stmt->execute([$product_id]);
+            $success_msg = "ลบสินค้าสำเร็จ!";
+        } catch (Exception $e) {
+            $error_msg = "เกิดข้อผิดพลาด: " . $e->getMessage();
+        }
     }
 }
 
 // ดึงข้อมูลสถิติ
-$stats_query = "SELECT 
-    (SELECT COUNT(*) FROM products) as total_products,
-    (SELECT COUNT(*) FROM orders) as total_orders,
-    (SELECT COUNT(*) FROM users WHERE username != 'admin') as total_users,
-    (SELECT COALESCE(SUM(total_amount), 0) FROM orders WHERE status = 'completed') as total_revenue";
-$stats_result = mysqli_query($conn, $stats_query);
-$stats = mysqli_fetch_assoc($stats_result);
+try {
+    $stmt = $pdo->query("SELECT COUNT(*) as total_products FROM products");
+    $total_products = $stmt->fetchColumn();
+    
+    $stmt = $pdo->query("SELECT COUNT(*) as total_orders FROM orders");
+    $total_orders = $stmt->fetchColumn();
+    
+    $stmt = $pdo->query("SELECT COUNT(*) as total_users FROM users WHERE username != 'admin'");
+    $total_users = $stmt->fetchColumn();
+    
+    $stmt = $pdo->query("SELECT COALESCE(SUM(total), 0) as total_revenue FROM orders WHERE status = 'completed'");
+    $total_revenue = $stmt->fetchColumn();
+    
+    $stats = [
+        'total_products' => $total_products,
+        'total_orders' => $total_orders,
+        'total_users' => $total_users,
+        'total_revenue' => $total_revenue
+    ];
+} catch (Exception $e) {
+    $stats = [
+        'total_products' => 0,
+        'total_orders' => 0,
+        'total_users' => 0,
+        'total_revenue' => 0
+    ];
+}
 
 // ดึงข้อมูลสินค้า
-$products_query = "SELECT p.*, c.name as category_name FROM products p 
-                   LEFT JOIN categories c ON p.category_id = c.id 
-                   ORDER BY p.id DESC";
-$products_result = mysqli_query($conn, $products_query);
+try {
+    $stmt = $pdo->query("SELECT p.*, c.name as category_name FROM products p 
+                         LEFT JOIN categories c ON p.category_id = c.id 
+                         ORDER BY p.id DESC");
+    $products = $stmt->fetchAll();
+} catch (Exception $e) {
+    $products = [];
+}
 
 // ดึงข้อมูลหมวดหมู่
-$categories_query = "SELECT * FROM categories ORDER BY name";
-$categories_result = mysqli_query($conn, $categories_query);
+try {
+    $stmt = $pdo->query("SELECT * FROM categories ORDER BY name");
+    $categories = $stmt->fetchAll();
+} catch (Exception $e) {
+    $categories = [];
+}
 
 // ดึงข้อมูลคำสั่งซื้อ
-$orders_query = "SELECT o.*, u.username FROM orders o 
-                 JOIN users u ON o.user_id = u.id 
-                 ORDER BY o.order_date DESC LIMIT 10";
-$orders_result = mysqli_query($conn, $orders_query);
+try {
+    $stmt = $pdo->query("SELECT o.*, u.username FROM orders o 
+                         JOIN users u ON o.user_id = u.id 
+                         ORDER BY o.created_at DESC LIMIT 10");
+    $orders = $stmt->fetchAll();
+} catch (Exception $e) {
+    $orders = [];
+}
 
 // ดึงข้อมูลผู้ใช้
-$users_query = "SELECT * FROM users WHERE username != 'admin' ORDER BY created_at DESC";
-$users_result = mysqli_query($conn, $users_query);
+try {
+    $stmt = $pdo->query("SELECT * FROM users WHERE username != 'admin' ORDER BY created_at DESC");
+    $users = $stmt->fetchAll();
+} catch (Exception $e) {
+    $users = [];
+}
 
 // ดึงข้อมูลยอดขายรายเดือน
-$sales_query = "SELECT DATE_FORMAT(order_date, '%Y-%m') as month, 
-                SUM(total_amount) as total_sales 
-                FROM orders 
-                WHERE status = 'completed' 
-                GROUP BY DATE_FORMAT(order_date, '%Y-%m') 
-                ORDER BY month DESC LIMIT 12";
-$sales_result = mysqli_query($conn, $sales_query);
+try {
+    $stmt = $pdo->query("SELECT strftime('%Y-%m', created_at) as month, 
+                         SUM(total) as total_sales 
+                         FROM orders 
+                         WHERE status = 'completed' 
+                         GROUP BY strftime('%Y-%m', created_at) 
+                         ORDER BY month DESC LIMIT 12");
+    $sales = $stmt->fetchAll();
+} catch (Exception $e) {
+    $sales = [];
+}
 ?>
 
 <!DOCTYPE html>
@@ -207,7 +275,14 @@ $sales_result = mysqli_query($conn, $sales_query);
     <div class="main-content">
         <?php if (isset($success_msg)): ?>
             <div class="alert alert-success alert-dismissible fade show">
-                <?php echo $success_msg; ?>
+                <?php echo htmlspecialchars($success_msg); ?>
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        <?php endif; ?>
+        
+        <?php if (isset($error_msg)): ?>
+            <div class="alert alert-danger alert-dismissible fade show">
+                <?php echo htmlspecialchars($error_msg); ?>
                 <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             </div>
         <?php endif; ?>
@@ -274,11 +349,11 @@ $sales_result = mysqli_query($conn, $sales_query);
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php while ($order = mysqli_fetch_assoc($orders_result)): ?>
+                                <?php foreach ($orders as $order): ?>
                                 <tr>
                                     <td>#<?php echo $order['id']; ?></td>
-                                    <td><?php echo $order['username']; ?></td>
-                                    <td>฿<?php echo number_format($order['total_amount'], 2); ?></td>
+                                    <td><?php echo htmlspecialchars($order['username']); ?></td>
+                                    <td>฿<?php echo number_format($order['total'], 2); ?></td>
                                     <td>
                                         <span class="status-<?php echo $order['status']; ?>">
                                             <?php
@@ -292,9 +367,9 @@ $sales_result = mysqli_query($conn, $sales_query);
                                             ?>
                                         </span>
                                     </td>
-                                    <td><?php echo date('d/m/Y H:i', strtotime($order['order_date'])); ?></td>
+                                    <td><?php echo date('d/m/Y H:i', strtotime($order['created_at'])); ?></td>
                                 </tr>
-                                <?php endwhile; ?>
+                                <?php endforeach; ?>
                             </tbody>
                         </table>
                     </div>
@@ -325,14 +400,11 @@ $sales_result = mysqli_query($conn, $sales_query);
                                     <label class="form-label">หมวดหมู่</label>
                                     <select class="form-control" name="category_id" required>
                                         <option value="">เลือกหมวดหมู่</option>
-                                        <?php 
-                                        mysqli_data_seek($categories_result, 0);
-                                        while ($category = mysqli_fetch_assoc($categories_result)): 
-                                        ?>
+                                        <?php foreach ($categories as $category): ?>
                                             <option value="<?php echo $category['id']; ?>">
-                                                <?php echo $category['name']; ?>
+                                                <?php echo htmlspecialchars($category['name']); ?>
                                             </option>
-                                        <?php endwhile; ?>
+                                        <?php endforeach; ?>
                                     </select>
                                 </div>
                             </div>
@@ -387,11 +459,11 @@ $sales_result = mysqli_query($conn, $sales_query);
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php while ($product = mysqli_fetch_assoc($products_result)): ?>
+                                <?php foreach ($products as $product): ?>
                                 <tr>
                                     <td>
-                                        <?php if ($product['image_url']): ?>
-                                            <img src="<?php echo $product['image_url']; ?>" 
+                                        <?php if ($product['image']): ?>
+                                            <img src="uploads/<?php echo $product['image']; ?>" 
                                                  style="width: 50px; height: 50px; object-fit: cover;">
                                         <?php else: ?>
                                             <div class="bg-light d-flex align-items-center justify-content-center" 
@@ -400,12 +472,12 @@ $sales_result = mysqli_query($conn, $sales_query);
                                             </div>
                                         <?php endif; ?>
                                     </td>
-                                    <td><?php echo $product['name']; ?></td>
-                                    <td><?php echo $product['category_name']; ?></td>
+                                    <td><?php echo htmlspecialchars($product['name']); ?></td>
+                                    <td><?php echo htmlspecialchars($product['category_name']); ?></td>
                                     <td>฿<?php echo number_format($product['price'], 2); ?></td>
                                     <td>
-                                        <span class="badge <?php echo $product['stock_quantity'] > 0 ? 'bg-success' : 'bg-danger'; ?>">
-                                            <?php echo $product['stock_quantity']; ?>
+                                        <span class="badge <?php echo $product['stock'] > 0 ? 'bg-success' : 'bg-danger'; ?>">
+                                            <?php echo $product['stock']; ?>
                                         </span>
                                     </td>
                                     <td>
@@ -418,7 +490,7 @@ $sales_result = mysqli_query($conn, $sales_query);
                                         </form>
                                     </td>
                                 </tr>
-                                <?php endwhile; ?>
+                                <?php endforeach; ?>
                             </tbody>
                         </table>
                     </div>
@@ -456,22 +528,23 @@ $sales_result = mysqli_query($conn, $sales_query);
                         </div>
                         <div class="card-body">
                             <div class="list-group">
-                                <?php 
-                                mysqli_data_seek($categories_result, 0);
-                                while ($category = mysqli_fetch_assoc($categories_result)): 
-                                ?>
+                                <?php foreach ($categories as $category): ?>
                                     <div class="list-group-item d-flex justify-content-between align-items-center">
-                                        <?php echo $category['name']; ?>
+                                        <?php echo htmlspecialchars($category['name']); ?>
                                         <span class="badge bg-primary rounded-pill">
                                             <?php
-                                            $count_query = "SELECT COUNT(*) as count FROM products WHERE category_id = " . $category['id'];
-                                            $count_result = mysqli_query($conn, $count_query);
-                                            $count = mysqli_fetch_assoc($count_result)['count'];
-                                            echo $count . ' สินค้า';
+                                            try {
+                                                $stmt = $pdo->prepare("SELECT COUNT(*) as count FROM products WHERE category_id = ?");
+                                                $stmt->execute([$category['id']]);
+                                                $count = $stmt->fetchColumn();
+                                                echo $count . ' สินค้า';
+                                            } catch (Exception $e) {
+                                                echo '0 สินค้า';
+                                            }
                                             ?>
                                         </span>
                                     </div>
-                                <?php endwhile; ?>
+                                <?php endforeach; ?>
                             </div>
                         </div>
                     </div>
@@ -500,17 +573,22 @@ $sales_result = mysqli_query($conn, $sales_query);
                             </thead>
                             <tbody>
                                 <?php 
-                                $all_orders_query = "SELECT o.*, u.username FROM orders o 
-                                                     JOIN users u ON o.user_id = u.id 
-                                                     ORDER BY o.order_date DESC";
-                                $all_orders_result = mysqli_query($conn, $all_orders_query);
-                                while ($order = mysqli_fetch_assoc($all_orders_result)): 
+                                try {
+                                    $stmt = $pdo->query("SELECT o.*, u.username FROM orders o 
+                                                         JOIN users u ON o.user_id = u.id 
+                                                         ORDER BY o.created_at DESC");
+                                    $all_orders = $stmt->fetchAll();
+                                } catch (Exception $e) {
+                                    $all_orders = [];
+                                }
+                                
+                                foreach ($all_orders as $order): 
                                 ?>
                                 <tr>
                                     <td>#<?php echo $order['id']; ?></td>
                                     <td><?php echo $order['username']; ?></td>
                                     <td><?php echo $order['shipping_address']; ?></td>
-                                    <td>฿<?php echo number_format($order['total_amount'], 2); ?></td>
+                                    <td>฿<?php echo number_format($order['total'], 2); ?></td>
                                     <td>
                                         <span class="status-<?php echo $order['status']; ?>">
                                             <?php
@@ -524,7 +602,7 @@ $sales_result = mysqli_query($conn, $sales_query);
                                             ?>
                                         </span>
                                     </td>
-                                    <td><?php echo date('d/m/Y H:i', strtotime($order['order_date'])); ?></td>
+                                    <td><?php echo date('d/m/Y H:i', strtotime($order['created_at'])); ?></td>
                                     <td>
                                         <form method="POST" style="display: inline;">
                                             <input type="hidden" name="order_id" value="<?php echo $order['id']; ?>">
@@ -540,7 +618,7 @@ $sales_result = mysqli_query($conn, $sales_query);
                                         </form>
                                     </td>
                                 </tr>
-                                <?php endwhile; ?>
+                                <?php endforeach; ?>
                             </tbody>
                         </table>
                     </div>
@@ -567,16 +645,16 @@ $sales_result = mysqli_query($conn, $sales_query);
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php while ($user = mysqli_fetch_assoc($users_result)): ?>
+                                <?php foreach ($users as $user): ?>
                                 <tr>
                                     <td><?php echo $user['id']; ?></td>
-                                    <td><?php echo $user['username']; ?></td>
-                                    <td><?php echo $user['email']; ?></td>
-                                    <td><?php echo $user['full_name']; ?></td>
-                                    <td><?php echo $user['phone']; ?></td>
+                                    <td><?php echo htmlspecialchars($user['username']); ?></td>
+                                    <td><?php echo htmlspecialchars($user['email'] ?? ''); ?></td>
+                                    <td><?php echo htmlspecialchars($user['full_name'] ?? ''); ?></td>
+                                    <td><?php echo htmlspecialchars($user['phone'] ?? ''); ?></td>
                                     <td><?php echo date('d/m/Y', strtotime($user['created_at'])); ?></td>
                                 </tr>
-                                <?php endwhile; ?>
+                                <?php endforeach; ?>
                             </tbody>
                         </table>
                     </div>
@@ -606,30 +684,38 @@ $sales_result = mysqli_query($conn, $sales_query);
                         </div>
                         <div class="card-body">
                             <?php
-                            $top_products_query = "SELECT p.name, SUM(oi.quantity) as total_sold 
+                            try {
+                                $stmt = $pdo->query("SELECT p.name, SUM(oi.quantity) as total_sold 
                                                    FROM order_items oi 
                                                    JOIN products p ON oi.product_id = p.id 
                                                    JOIN orders o ON oi.order_id = o.id 
                                                    WHERE o.status = 'completed' 
                                                    GROUP BY p.id, p.name 
-                                                   ORDER BY total_sold DESC LIMIT 5";
-                            $top_products_result = mysqli_query($conn, $top_products_query);
+                                                   ORDER BY total_sold DESC LIMIT 5");
+                                $top_products = $stmt->fetchAll();
+                            } catch (Exception $e) {
+                                $top_products = [];
+                            }
                             ?>
                             <div class="list-group list-group-flush">
-                                <?php 
-                                $rank = 1;
-                                while ($product = mysqli_fetch_assoc($top_products_result)): 
-                                ?>
-                                    <div class="list-group-item d-flex justify-content-between align-items-center border-0 px-0">
-                                        <div>
-                                            <span class="badge bg-primary me-2"><?php echo $rank++; ?></span>
-                                            <?php echo $product['name']; ?>
+                                <?php if (empty($top_products)): ?>
+                                    <div class="text-muted text-center py-3">ยังไม่มีข้อมูลการขาย</div>
+                                <?php else: ?>
+                                    <?php 
+                                    $rank = 1;
+                                    foreach ($top_products as $product): 
+                                    ?>
+                                        <div class="list-group-item d-flex justify-content-between align-items-center border-0 px-0">
+                                            <div>
+                                                <span class="badge bg-primary me-2"><?php echo $rank++; ?></span>
+                                                <?php echo htmlspecialchars($product['name']); ?>
+                                            </div>
+                                            <span class="badge bg-success rounded-pill">
+                                                <?php echo $product['total_sold']; ?> ชิ้น
+                                            </span>
                                         </div>
-                                        <span class="badge bg-success rounded-pill">
-                                            <?php echo $product['total_sold']; ?> ชิ้น
-                                        </span>
-                                    </div>
-                                <?php endwhile; ?>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
                             </div>
                         </div>
                     </div>
@@ -669,8 +755,7 @@ $sales_result = mysqli_query($conn, $sales_query);
                 <?php
                 $months = [];
                 $sales = [];
-                mysqli_data_seek($sales_result, 0);
-                while ($row = mysqli_fetch_assoc($sales_result)) {
+                foreach ($sales as $row) {
                     $months[] = "'" . date('M Y', strtotime($row['month'] . '-01')) . "'";
                     $sales[] = $row['total_sales'];
                 }
