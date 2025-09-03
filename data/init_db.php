@@ -1,102 +1,111 @@
 <?php
-/**
- * Database initialization and migration script
- * Creates SQLite database with all required tables
- */
+require_once '../config/database.php';
 
-$dbPath = __DIR__ . '/app.db';
+$db = getDB();
 
 try {
-    $pdo = new PDO('sqlite:' . $dbPath);
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    
-    // Create tables
-    $pdo->exec("
+    // Create users table
+    $db->exec("
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL,
-            role TEXT CHECK(role IN ('user','admin')) DEFAULT 'user',
-            created_at TEXT DEFAULT (datetime('now'))
+            username VARCHAR(50) UNIQUE NOT NULL,
+            email VARCHAR(100) UNIQUE NOT NULL,
+            password VARCHAR(255) NOT NULL,
+            role VARCHAR(20) DEFAULT 'user',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ");
     
-    $pdo->exec("
+    // Create categories table
+    $db->exec("
         CREATE TABLE IF NOT EXISTS categories (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL
+            name VARCHAR(100) NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ");
     
-    $pdo->exec("
+    // Create products table
+    $db->exec("
         CREATE TABLE IF NOT EXISTS products (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            category_id INTEGER,
-            name TEXT NOT NULL,
+            name VARCHAR(200) NOT NULL,
             description TEXT,
-            price REAL NOT NULL,
+            price DECIMAL(10,2) NOT NULL,
             stock INTEGER DEFAULT 0,
-            image TEXT,
-            created_at TEXT DEFAULT (datetime('now')),
+            category_id INTEGER,
+            image VARCHAR(255),
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (category_id) REFERENCES categories(id)
         )
     ");
     
-    $pdo->exec("
+    // Create orders table
+    $db->exec("
         CREATE TABLE IF NOT EXISTS orders (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER,
-            total REAL NOT NULL,
-            status TEXT DEFAULT 'pending',
-            created_at TEXT DEFAULT (datetime('now')),
+            total DECIMAL(10,2) NOT NULL,
+            status VARCHAR(50) DEFAULT 'pending',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id)
         )
     ");
     
-    $pdo->exec("
+    // Create order_items table
+    $db->exec("
         CREATE TABLE IF NOT EXISTS order_items (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             order_id INTEGER,
             product_id INTEGER,
             quantity INTEGER NOT NULL,
-            price REAL NOT NULL,
+            price DECIMAL(10,2) NOT NULL,
             FOREIGN KEY (order_id) REFERENCES orders(id),
             FOREIGN KEY (product_id) REFERENCES products(id)
         )
     ");
     
-    $pdo->exec("
-        CREATE TABLE IF NOT EXISTS promotions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            code TEXT UNIQUE NOT NULL,
-            discount REAL NOT NULL,
-            expire_date TEXT NOT NULL
-        )
+    // Insert default admin user
+    $adminPassword = password_hash('admin123', PASSWORD_DEFAULT);
+    $db->exec("
+        INSERT OR IGNORE INTO users (username, email, password, role) 
+        VALUES ('admin', 'admin@store.com', '$adminPassword', 'admin')
     ");
     
-    $pdo->exec("
-        CREATE TABLE IF NOT EXISTS receipts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            order_id INTEGER UNIQUE,
-            html TEXT NOT NULL,
-            created_at TEXT DEFAULT (datetime('now')),
-            FOREIGN KEY (order_id) REFERENCES orders(id)
-        )
-    ");
+    // Insert default categories
+    $defaultCategories = [
+        'Electronics',
+        'Clothing',
+        'Books',
+        'Home & Garden',
+        'Sports',
+        'Toys',
+        'Automotive',
+        'Health & Beauty'
+    ];
     
-    // Create default admin user if not exists
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM users WHERE username = 'admin'");
-    $stmt->execute();
-    
-    if ($stmt->fetchColumn() == 0) {
-        $adminPassword = password_hash('admin123', PASSWORD_DEFAULT);
-        $stmt = $pdo->prepare("INSERT INTO users (username, password, role) VALUES (?, ?, 'admin')");
-        $stmt->execute(['admin', $adminPassword]);
+    foreach ($defaultCategories as $category) {
+        $db->exec("INSERT OR IGNORE INTO categories (name) VALUES ('$category')");
     }
     
-    echo "Database initialized successfully!\n";
+    // Insert sample products
+    $sampleProducts = [
+        ['Smartphone', 'Latest smartphone with advanced features', 599.99, 50, 1, 'public/images/phone.jpg'],
+        ['Laptop', 'High-performance laptop for work and gaming', 999.99, 30, 1, 'public/images/laptop.jpg'],
+        ['T-Shirt', 'Comfortable cotton t-shirt', 19.99, 100, 2, 'public/images/tshirt.jpg'],
+        ['Book', 'Bestselling novel', 14.99, 200, 3, 'public/images/book.jpg'],
+        ['Garden Tool', 'Essential gardening equipment', 29.99, 75, 4, 'public/images/garden.jpg']
+    ];
     
-} catch (PDOException $e) {
-    die("Database error: " . $e->getMessage());
+    foreach ($sampleProducts as $product) {
+        $db->exec("
+            INSERT OR IGNORE INTO products (name, description, price, stock, category_id, image) 
+            VALUES ('{$product[0]}', '{$product[1]}', {$product[2]}, {$product[3]}, {$product[4]}, '{$product[5]}')
+        ");
+    }
+    
+    echo "Database initialized successfully!";
+    
+} catch (Exception $e) {
+    echo "Error initializing database: " . $e->getMessage();
 }
-?>
