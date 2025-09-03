@@ -1,69 +1,29 @@
 <?php
-/**
- * Database configuration and connection
- */
+// Database configuration
+define('DB_HOST', 'localhost');
+define('DB_NAME', 'fishing_store');
+define('DB_USER', 'root');
+define('DB_PASS', '');
 
-class Database {
-    private static $instance = null;
-    private $pdo;
-    
-    private function __construct() {
-        $dbPath = __DIR__ . '/../data/app.db';
-        
-        try {
-            $this->pdo = new PDO('sqlite:' . $dbPath);
-            $this->pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-            $this->pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
-        } catch (PDOException $e) {
-            die("Database connection failed: " . $e->getMessage());
-        }
+// Create connection
+try {
+    $pdo = new PDO("mysql:host=" . DB_HOST . ";dbname=" . DB_NAME, DB_USER, DB_PASS);
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+} catch(PDOException $e) {
+    die("Connection failed: " . $e->getMessage());
+}
+
+// CSRF Token generation
+function generateCSRFToken() {
+    if (!isset($_SESSION['csrf_token'])) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
     }
-    
-    public static function getInstance() {
-        if (self::$instance === null) {
-            self::$instance = new self();
-        }
-        return self::$instance;
-    }
-    
-    public function getConnection() {
-        return $this->pdo;
-    }
+    return $_SESSION['csrf_token'];
 }
 
-// Helper function to get database connection
-function getDB() {
-    return Database::getInstance()->getConnection();
-}
-
-// Session management
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
-
-// Helper functions
-function isLoggedIn() {
-    return isset($_SESSION['user_id']);
-}
-
-function isAdmin() {
-    return isset($_SESSION['role']) && $_SESSION['role'] === 'admin';
-}
-
-function requireLogin() {
-    if (!isLoggedIn()) {
-        http_response_code(401);
-        echo json_encode(['error' => 'กรุณาเข้าสู่ระบบ']);
-        exit;
-    }
-}
-
-function requireAdmin() {
-    requireLogin();
-    if (!isAdmin()) {
-        http_response_code(403);
-        echo json_encode(['error' => 'ไม่มีสิทธิ์เข้าถึง']);
-        exit;
-    }
+// CSRF Token validation
+function validateCSRFToken($token) {
+    return isset($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $token);
 }
 ?>

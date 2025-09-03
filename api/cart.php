@@ -1,61 +1,172 @@
 <?php
+session_start();
 require_once '../config/database.php';
+require_once '../includes/functions.php';
 
 header('Content-Type: application/json');
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    http_response_code(405);
-    echo json_encode(['error' => 'Method not allowed']);
-    exit;
-}
+$method = $_SERVER['REQUEST_METHOD'];
+$action = $_GET['action'] ?? '';
 
-$input = json_decode(file_get_contents('php://input'), true);
-$cart = $input['cart'] ?? [];
-
-if (empty($cart)) {
-    echo json_encode(['items' => [], 'subtotal' => 0, 'tax' => 0, 'total' => 0]);
-    exit;
-}
-
-$db = getDB();
-
-try {
-    $productIds = array_keys($cart);
-    $placeholders = str_repeat('?,', count($productIds) - 1) . '?';
-    
-    $stmt = $db->prepare("SELECT id, name, price, image, stock FROM products WHERE id IN ($placeholders)");
-    $stmt->execute($productIds);
-    $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
-    $items = [];
-    $subtotal = 0;
-    
-    foreach ($products as $product) {
-        $quantity = $cart[$product['id']];
-        $itemTotal = $product['price'] * $quantity;
-        $subtotal += $itemTotal;
+switch ($action) {
+    case 'add':
+        if ($method === 'POST') {
+            $input = json_decode(file_get_contents('php://input'), true);
+            
+            if (!validateCSRFToken($input['csrf_token'] ?? '')) {
+                http_response_code(403);
+                echo json_encode(['success' => false, 'message' => 'Invalid CSRF token']);
+                exit;
+            }
+            
+            $productId = (int)($input['product_id'] ?? 0);
+            $quantity = (int)($input['quantity'] ?? 1);
+            
+            if ($productId <= 0 || $quantity <= 0) {
+                echo json_encode(['success' => false, 'message' => 'Invalid product or quantity']);
+                exit;
+            }
+            
+            // Check product stock
+            $product = getProduct($productId);
+            if (!$product) {
+                echo json_encode(['success' => false, 'message' => 'Product not found']);
+                exit;
+            }
+            
+            if ($product['stock_quantity'] < $quantity) {
+                echo json_encode(['success' => false, 'message' => 'Insufficient stock']);
+                exit;
+            }
+            
+            if (addToCart($productId, $quantity)) {
+                $cartCount = getCartCount();
+                echo json_encode([
+                    'success' => true, 
+                    'message' => 'Product added to cart',
+                    'cart_count' => $cartCount
+                ]);
+            } else {
+                echo json_encode(['success' => false, 'message' => 'Failed to add product to cart']);
+            }
+        }
+        break;
         
-        $items[] = [
-            'id' => $product['id'],
-            'name' => $product['name'],
-            'price' => $product['price'],
-            'image' => $product['image'],
-            'quantity' => $quantity,
-            'stock' => $product['stock']
-        ];
-    }
-    
-    $tax = $subtotal * 0.08; // 8% tax
-    $total = $subtotal + $tax;
-    
-    echo json_encode([
-        'items' => $items,
-        'subtotal' => $subtotal,
-        'tax' => $tax,
-        'total' => $total
-    ]);
-    
-} catch (Exception $e) {
-    http_response_code(500);
-    echo json_encode(['error' => 'Failed to load cart']);
+    case 'get':
+        $items = getCartItems();
+        $total = getCartTotal();
+        $count = getCartCount();
+        
+        echo json_encode([
+            'success' => true,
+            'items' => $items,
+            'total' => $total,
+            'count' => $count
+        ]);
+        break;
+        
+    case 'update':
+        if ($method === 'POST') {
+            $input = json_decode(file_get_contents('php://input'), true);
+            
+            if (!validateCSRFToken($input['csrf_token'] ?? '')) {
+                http_response_code(403);
+                echo json_encode(['success' => false, 'message' => 'Invalid CSRF token']);
+                exit;
+            }
+            
+            $cartId = (int)($input['cart_id'] ?? 0);
+            $quantity = (int)($input['quantity'] ?? 0);
+            
+            if ($cartId <= 0) {
+                echo json_encode(['success' => false, 'message' => 'Invalid cart item']);
+                exit;
+            }
+            
+            if (updateCartQuantity($cartId, $quantity)) {
+                $items = getCartItems();
+                $total = getCartTotal();
+                $count = getCartCount();
+                
+                echo json_encode([
+                    'success' => true,
+                    'message' => 'Cart updated',
+                    'items' => $items,
+                    'total' => $total,
+                    'count' => $count
+                ]);
+            } else {
+                echo json_encode(['success' => false, 'message' => 'Failed to update cart']);
+            }
+        }
+        break;
+        
+    case 'remove':
+        if ($method === 'POST') {
+            $input = json_decode(file_get_contents('php://input'), true);
+            
+            if (!validateCSRFToken($input['csrf_token'] ?? '')) {
+                http_response_code(403);
+                echo json_encode(['success' => false, 'message' => 'Invalid CSRF token']);
+                exit;
+            }
+            
+            $cartId = (int)($input['cart_id'] ?? 0);
+            
+            if ($cartId <= 0) {
+                echo json_encode(['success' => false, 'message' => 'Invalid cart item']);
+                exit;
+            }
+            
+            if (removeFromCart($cartId)) {
+                $items = getCartItems();
+                $total = getCartTotal();
+                $count = getCartCount();
+                
+                echo json_encode([
+                    'success' => true,
+                    'message' => 'Item removed from cart',
+                    'items' => $items,
+                    'total' => $total,
+                    'count' => $count
+                ]);
+            } else {
+                echo json_encode(['success' => false, 'message' => 'Failed to remove item']);
+            }
+        }
+        break;
+        
+    case 'clear':
+        if ($method === 'POST') {
+            $input = json_decode(file_get_contents('php://input'), true);
+            
+            if (!validateCSRFToken($input['csrf_token'] ?? '')) {
+                http_response_code(403);
+                echo json_encode(['success' => false, 'message' => 'Invalid CSRF token']);
+                exit;
+            }
+            
+            if (clearCart()) {
+                echo json_encode([
+                    'success' => true,
+                    'message' => 'Cart cleared',
+                    'items' => [],
+                    'total' => 0,
+                    'count' => 0
+                ]);
+            } else {
+                echo json_encode(['success' => false, 'message' => 'Failed to clear cart']);
+            }
+        }
+        break;
+        
+    case 'count':
+        $count = getCartCount();
+        echo json_encode(['success' => true, 'count' => $count]);
+        break;
+        
+    default:
+        http_response_code(404);
+        echo json_encode(['success' => false, 'message' => 'Action not found']);
 }
+?>

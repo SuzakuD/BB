@@ -1,141 +1,194 @@
-# Modern E-Commerce System
+# Fishing Gear Store - E-commerce SPA
 
-A fully functional e-commerce system built with PHP, JavaScript, and Bootstrap. Features include instant product search, editable shopping cart, complete product management, and a comprehensive admin panel.
+A fully functional e-commerce Single Page Application for selling fishing equipment, built with PHP, MySQL, and vanilla JavaScript.
 
 ## Features
 
-### Customer Features
-- **Instant Product Search**: Real-time search with instant results
-- **Editable Shopping Cart**: Add, remove, update quantities, and clear cart
-- **Fixed Account Dropdown**: User account management with dropdown navigation
-- **Product Browsing**: Browse products by category with filtering
-- **Responsive Design**: Mobile-friendly interface
+### Core E-commerce Features
+- **Product Management**: Browse, search, and filter fishing equipment
+- **Shopping Cart**: Add/remove items, update quantities, real-time totals
+- **User Authentication**: Login/register with role-based access (admin/user)
+- **Checkout System**: Complete order process with payment simulation
+- **Order Management**: Order history, receipts, and status tracking
 
-### Admin Features
-- **Dashboard**: Overview of products, orders, users, and revenue
-- **Product Management**: Add, edit, delete products with image uploads
-- **Order Management**: View and manage customer orders
-- **User Management**: Manage customer accounts
-- **Category Management**: Organize products by categories
+### Advanced Features
+- **Admin Dashboard**: Complete admin panel for managing products, orders, users
+- **Product Reviews**: Customer ratings and reviews system
+- **Promotions**: Discount codes and promotional campaigns
+- **Contact System**: Customer inquiry management
+- **Responsive Design**: Mobile-friendly Bootstrap 5.3.6 interface
+- **Security**: CSRF protection, password hashing, session management
+
+### Technical Features
+- **SPA Architecture**: No page reloads, AJAX-based navigation
+- **Real-time Updates**: Instant cart updates, live notifications
+- **Search & Filtering**: Advanced product search and filtering
+- **Image Gallery**: Product image display with zoom functionality
+- **Receipt Generation**: PDF/HTML receipt generation
+- **Notification System**: Toast notifications for user feedback
 
 ## Installation
 
-1. **Requirements**
-   - PHP 7.4 or higher
-   - SQLite3 extension
-   - Web server (Apache/Nginx)
+### Prerequisites
+- PHP 7.4 or higher
+- MySQL 5.7 or higher
+- Web server (Apache/Nginx)
 
-2. **Setup**
+### Setup Instructions
+
+1. **Clone/Download the project**
    ```bash
-   # Clone or download the project
-   cd ecommerce-system
-   
-   # Set proper permissions
-   chmod 755 data/
-   chmod 755 public/images/
-   
-   # Access the application in your browser
-   # The database will be automatically initialized on first visit
+   git clone <repository-url>
+   cd fishing-gear-store
    ```
 
-3. **Default Admin Account**
-   - Username: `admin`
-   - Password: `admin123`
+2. **Configure Database**
+   - Create a MySQL database named `fishing_store`
+   - Update database credentials in `config/database.php`
+
+3. **Initialize Database**
+   ```bash
+   php setup.php
+   ```
+
+4. **Set Permissions**
+   ```bash
+   chmod 755 assets/images/products/
+   ```
+
+5. **Access the Application**
+   - Open your browser and navigate to `http://localhost/index.php`
+   - Use admin credentials: `admin@fishingstore.com` / `password`
+
+## Database Schema
+
+The application uses the following main tables:
+- `users` - User accounts and authentication
+- `products` - Product catalog
+- `categories` - Product categories
+- `cart` - Shopping cart items
+- `orders` - Order information
+- `order_items` - Individual order items
+- `promotions` - Discount codes and promotions
+- `product_reviews` - Customer reviews and ratings
+- `contact_messages` - Customer inquiries
+- `notifications` - System notifications
+
+## API Endpoints
+
+### Authentication (`api/auth.php`)
+- `POST ?action=login` - User login
+- `POST ?action=register` - User registration
+- `POST ?action=logout` - User logout
+- `GET ?action=check` - Check authentication status
+
+### Products (`api/products.php`)
+- `GET ?action=list` - List products with pagination
+- `GET ?action=get&id={id}` - Get product details
+- `GET ?action=categories` - Get product categories
+- `GET ?action=featured` - Get featured products
+- `GET ?action=search&q={query}` - Search products
+
+### Cart (`api/cart.php`)
+- `POST ?action=add` - Add item to cart
+- `GET ?action=get` - Get cart items
+- `POST ?action=update` - Update cart quantity
+- `POST ?action=remove` - Remove item from cart
+- `POST ?action=clear` - Clear entire cart
+
+### Orders (`api/orders.php`)
+- `POST ?action=create` - Create new order
+- `GET ?action=list` - Get user orders
+- `GET ?action=get&id={id}` - Get order details
+- `GET ?action=receipt&id={id}` - Generate receipt
+
+### Admin (`api/admin.php`)
+- `GET ?action=dashboard` - Admin dashboard stats
+- `GET ?action=products` - Manage products
+- `GET ?action=categories` - Manage categories
+- `GET ?action=orders` - Manage orders
+- `GET ?action=users` - Manage users
+- `GET ?action=promotions` - Manage promotions
 
 ## File Structure
 
 ```
-├── index.php              # Main application file
+fishing-gear-store/
+├── index.php                 # Main application entry point
+├── setup.php                 # Database initialization script
 ├── config/
-│   └── database.php       # Database configuration
-├── public/
-│   ├── css/
-│   │   └── style.css      # Main stylesheet
-│   ├── js/
-│   │   └── app.js         # Main JavaScript application
-│   └── images/
-│       └── products/      # Product images
-├── pages/                 # Page templates
-│   ├── home.php
+│   └── database.php          # Database configuration
+├── includes/
+│   └── functions.php         # Core PHP functions
+├── api/                      # API endpoints
+│   ├── auth.php
 │   ├── products.php
-│   ├── login.php
-│   └── register.php
-├── admin/                 # Admin page templates
-│   ├── dashboard.php
-│   └── products.php
-├── api/                   # API endpoints
-│   ├── search.php
 │   ├── cart.php
-│   ├── products.php
-│   ├── categories.php
-│   ├── login.php
-│   ├── register.php
-│   ├── user-status.php
-│   ├── logout.php
-│   └── admin/             # Admin API endpoints
-│       ├── dashboard.php
-│       ├── products.php
-│       ├── save-product.php
-│       └── delete-product.php
-└── data/                  # Database and data files
-    ├── app.db            # SQLite database (auto-created)
-    └── init_db.php       # Database initialization
+│   ├── orders.php
+│   ├── admin.php
+│   └── contact.php
+├── assets/
+│   ├── css/
+│   │   └── style.css         # Custom styles
+│   ├── js/
+│   │   ├── app.js            # Main application logic
+│   │   ├── checkout.js       # Checkout functionality
+│   │   ├── admin.js          # Admin panel
+│   │   └── advanced.js       # Advanced features
+│   └── images/
+│       ├── placeholder.svg   # Default product image
+│       └── products/         # Product images
+├── database/
+│   └── schema.sql            # Database schema
+└── README.md
 ```
 
 ## Usage
 
 ### For Customers
-1. Browse products by category
-2. Use instant search to find products
-3. Add products to cart
-4. Manage cart quantities
-5. Proceed to checkout (requires login)
+1. **Browse Products**: Navigate through categories or use search
+2. **Add to Cart**: Click "Add to Cart" on any product
+3. **Manage Cart**: Update quantities or remove items
+4. **Checkout**: Complete the 4-step checkout process
+5. **Track Orders**: View order history and download receipts
 
-### For Admins
-1. Login with admin credentials
-2. Access admin panel from sidebar
-3. Manage products, orders, and users
-4. View dashboard statistics
-
-## API Endpoints
-
-- `GET /api/products.php` - Get all products
-- `GET /api/search.php?q=query` - Search products
-- `GET /api/categories.php` - Get all categories
-- `POST /api/cart.php` - Get cart data
-- `POST /api/login.php` - User login
-- `POST /api/register.php` - User registration
-- `GET /api/user-status.php` - Get current user status
-- `POST /api/logout.php` - User logout
-
-### Admin Endpoints
-- `GET /api/admin/dashboard.php` - Get dashboard data
-- `GET /api/admin/products.php` - Get all products for admin
-- `POST /api/admin/save-product.php` - Save/update product
-- `POST /api/admin/delete-product.php` - Delete product
+### For Administrators
+1. **Login**: Use admin credentials to access admin panel
+2. **Dashboard**: View sales statistics and recent activity
+3. **Manage Products**: Add, edit, or delete products
+4. **Manage Orders**: Update order status and view details
+5. **Manage Users**: View customer accounts
+6. **Manage Promotions**: Create discount codes
+7. **View Messages**: Handle customer inquiries
 
 ## Security Features
 
-- Password hashing with PHP's built-in functions
-- Session-based authentication
-- Admin role verification
-- Input validation and sanitization
-- SQL injection prevention with prepared statements
-
-## Customization
-
-- Modify `public/css/style.css` for styling changes
-- Update `public/js/app.js` for JavaScript functionality
-- Add new API endpoints in the `api/` directory
-- Create new page templates in the `pages/` directory
+- **CSRF Protection**: All forms protected with CSRF tokens
+- **Password Hashing**: Secure password storage using PHP's password_hash()
+- **Session Management**: Secure session handling
+- **Input Sanitization**: All user inputs sanitized
+- **SQL Injection Prevention**: Prepared statements used throughout
+- **Role-based Access**: Admin functions restricted to admin users
 
 ## Browser Support
 
-- Chrome (latest)
-- Firefox (latest)
-- Safari (latest)
-- Edge (latest)
+- Chrome 80+
+- Firefox 75+
+- Safari 13+
+- Edge 80+
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test thoroughly
+5. Submit a pull request
 
 ## License
 
 This project is open source and available under the MIT License.
+
+## Support
+
+For support or questions, please contact the development team or create an issue in the repository.
