@@ -37,9 +37,28 @@ async function initializeApp() {
 
 function setupEventListeners() {
     // Search functionality
-    document.getElementById('search-input').addEventListener('keypress', function(e) {
+    const searchInput = document.getElementById('search-input');
+    
+    searchInput.addEventListener('keypress', function(e) {
         if (e.key === 'Enter') {
             searchProducts();
+        }
+    });
+    
+    // Live search with auto-suggest
+    searchInput.addEventListener('input', function(e) {
+        const query = e.target.value.trim();
+        if (query.length >= 1) {
+            performLiveSearch(query);
+        } else {
+            hideSearchSuggestions();
+        }
+    });
+    
+    // Hide suggestions when clicking outside
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.search-container')) {
+            hideSearchSuggestions();
         }
     });
     
@@ -404,9 +423,97 @@ async function searchProducts() {
         const data = await response.json();
         
         updateProductsDisplay(data, `ผลการค้นหา "${searchQuery}"`);
+        hideSearchSuggestions();
     } catch (error) {
         console.error('Search failed:', error);
         showAlert('ไม่สามารถค้นหาได้', 'danger');
+    }
+}
+
+// Live search with auto-suggest
+async function performLiveSearch(query) {
+    try {
+        const response = await fetch(`api/live_search.php?q=${encodeURIComponent(query)}`);
+        const suggestions = await response.json();
+        
+        showSearchSuggestions(suggestions);
+    } catch (error) {
+        console.error('Live search failed:', error);
+    }
+}
+
+function showSearchSuggestions(suggestions) {
+    hideSearchSuggestions(); // Remove existing suggestions
+    
+    if (suggestions.length === 0) {
+        return;
+    }
+    
+    const searchContainer = document.querySelector('.search-container') || createSearchContainer();
+    const suggestionsList = document.createElement('div');
+    suggestionsList.className = 'search-suggestions';
+    suggestionsList.innerHTML = suggestions.map(product => `
+        <div class="suggestion-item" onclick="selectSuggestion('${product.name}')">
+            <div class="suggestion-content">
+                <div class="suggestion-image">
+                    <img src="${product.image}" alt="${product.name}" onerror="this.src='public/images/no-image.png'">
+                </div>
+                <div class="suggestion-details">
+                    <div class="suggestion-name">${product.name}</div>
+                    <div class="suggestion-category">${product.category}</div>
+                    <div class="suggestion-price">฿${product.price}</div>
+                </div>
+            </div>
+        </div>
+    `).join('');
+    
+    searchContainer.appendChild(suggestionsList);
+}
+
+function createSearchContainer() {
+    const searchInput = document.getElementById('search-input');
+    const searchContainer = document.createElement('div');
+    searchContainer.className = 'search-container';
+    searchInput.parentNode.insertBefore(searchContainer, searchInput.parentNode);
+    searchInput.parentNode.appendChild(searchContainer);
+    return searchContainer;
+}
+
+function hideSearchSuggestions() {
+    const suggestions = document.querySelector('.search-suggestions');
+    if (suggestions) {
+        suggestions.remove();
+    }
+}
+
+function selectSuggestion(productName) {
+    const searchInput = document.getElementById('search-input');
+    searchInput.value = productName;
+    hideSearchSuggestions();
+    searchProducts();
+}
+
+// Cart functions
+async function clearCart() {
+    if (!confirm('คุณแน่ใจหรือไม่ที่จะลบสินค้าทั้งหมดออกจากตะกร้า?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('api/cart.php?action=clear', {
+            method: 'POST'
+        });
+        
+        if (response.ok) {
+            await updateCartCount();
+            await loadCartItems();
+            showAlert('ล้างตะกร้าเรียบร้อยแล้ว', 'success');
+        } else {
+            showAlert('ไม่สามารถล้างตะกร้าได้', 'danger');
+        }
+    } catch (error) {
+        console.error('Clear cart failed:', error);
+        showAlert('ไม่สามารถล้างตะกร้าได้', 'danger');
     }
 }
 
@@ -506,7 +613,7 @@ async function showCart() {
             let html = '';
             data.items.forEach(item => {
                 html += `
-                    <div class="cart-item d-flex align-items-center">
+                    <div class="cart-item d-flex align-items-center" id="cart-item-${item.id}">
                         <img src="${item.image || 'https://via.placeholder.com/80x80?text=No+Image'}" 
                              class="me-3" style="width: 80px; height: 80px; object-fit: cover;" alt="${item.name}">
                         <div class="flex-grow-1">
@@ -514,13 +621,13 @@ async function showCart() {
                             <p class="text-muted mb-1">${Number(item.price).toLocaleString()} บาท</p>
                             <div class="quantity-controls">
                                 <button class="quantity-btn" onclick="updateCartQuantity(${item.id}, ${item.quantity - 1})">-</button>
-                                <span class="mx-2">${item.quantity}</span>
+                                <span class="mx-2" id="quantity-${item.id}">${item.quantity}</span>
                                 <button class="quantity-btn" onclick="updateCartQuantity(${item.id}, ${item.quantity + 1})" 
                                         ${item.quantity >= item.stock ? 'disabled' : ''}>+</button>
                             </div>
                         </div>
                         <div class="text-end">
-                            <div class="fw-bold">${Number(item.total).toLocaleString()} บาท</div>
+                            <div class="fw-bold" id="subtotal-${item.id}">${Number(item.subtotal).toLocaleString()} บาท</div>
                             <button class="btn btn-sm btn-outline-danger mt-1" onclick="removeFromCart(${item.id})">
                                 <i class="fas fa-trash"></i>
                             </button>
@@ -544,6 +651,8 @@ async function showCart() {
 }
 
 async function updateCartQuantity(productId, quantity) {
+    if (quantity < 0) return;
+    
     try {
         const response = await fetch('api/cart.php?action=update', {
             method: 'PUT',
@@ -556,15 +665,55 @@ async function updateCartQuantity(productId, quantity) {
         const data = await response.json();
         
         if (data.success) {
+            // Update cart count
             cartCount = data.count;
             document.getElementById('cart-count').textContent = cartCount;
-            showCart(); // Refresh cart display
+            
+            if (quantity === 0) {
+                // Remove item from display
+                const itemElement = document.getElementById(`cart-item-${productId}`);
+                if (itemElement) {
+                    itemElement.remove();
+                }
+            } else {
+                // Update quantity and subtotal in real-time
+                const quantityElement = document.getElementById(`quantity-${productId}`);
+                const subtotalElement = document.getElementById(`subtotal-${productId}`);
+                
+                if (quantityElement && subtotalElement) {
+                    quantityElement.textContent = quantity;
+                    
+                    // Get current price and calculate new subtotal
+                    const priceText = subtotalElement.textContent.replace(/[^\d]/g, '');
+                    const price = parseInt(priceText) / quantityElement.textContent;
+                    const newSubtotal = price * quantity;
+                    subtotalElement.textContent = `${Number(newSubtotal).toLocaleString()} บาท`;
+                }
+            }
+            
+            // Update total
+            await updateCartTotal();
+            
         } else {
             showAlert(data.error, 'danger');
         }
     } catch (error) {
         console.error('Failed to update cart:', error);
         showAlert('ไม่สามารถอัปเดตตะกร้าได้', 'danger');
+    }
+}
+
+async function updateCartTotal() {
+    try {
+        const response = await fetch('api/cart.php?action=items');
+        const data = await response.json();
+        
+        const cartTotal = document.getElementById('cart-total');
+        if (cartTotal) {
+            cartTotal.textContent = Number(data.total).toLocaleString();
+        }
+    } catch (error) {
+        console.error('Failed to update cart total:', error);
     }
 }
 

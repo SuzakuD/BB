@@ -76,6 +76,39 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         }
     }
     
+    // แก้ไขสินค้า
+    if (isset($_POST['edit_product'])) {
+        $product_id = (int)$_POST['edit_product_id'];
+        $name = $_POST['edit_product_name'];
+        $description = $_POST['edit_description'];
+        $price = (float)$_POST['edit_price'];
+        $stock = (int)$_POST['edit_stock'];
+        $category_id = (int)$_POST['edit_category_id'];
+        
+        try {
+            // ถ้ามีการอัพโหลดรูปภาพใหม่
+            if (isset($_FILES['edit_image']) && $_FILES['edit_image']['error'] == 0) {
+                $image_url = uploadImage($_FILES['edit_image'], $name);
+                if ($image_url) {
+                    $stmt = $pdo->prepare("UPDATE products SET name = ?, description = ?, price = ?, stock = ?, category_id = ?, image = ? WHERE id = ?");
+                    $stmt->execute([$name, $description, $price, $stock, $category_id, $image_url, $product_id]);
+                } else {
+                    $error_msg = "ไม่สามารถอัพโหลดรูปภาพได้";
+                }
+            } else {
+                // ไม่มีการอัพโหลดรูปภาพใหม่
+                $stmt = $pdo->prepare("UPDATE products SET name = ?, description = ?, price = ?, stock = ?, category_id = ? WHERE id = ?");
+                $stmt->execute([$name, $description, $price, $stock, $category_id, $product_id]);
+            }
+            
+            if (!isset($error_msg)) {
+                $success_msg = "แก้ไขสินค้าสำเร็จ!";
+            }
+        } catch (Exception $e) {
+            $error_msg = "เกิดข้อผิดพลาด: " . $e->getMessage();
+        }
+    }
+    
     // ลบสินค้า
     if (isset($_POST['delete_product'])) {
         $product_id = (int)$_POST['product_id'];
@@ -174,7 +207,7 @@ try {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Panel - ระบบจัดการร้านขายอุปกรณ์ตกปลา</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.6/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         .sidebar {
@@ -190,6 +223,8 @@ try {
         .main-content {
             margin-left: 250px;
             padding: 20px;
+            overflow-x: auto;
+            max-width: calc(100vw - 250px);
         }
         .nav-link {
             color: white !important;
@@ -440,6 +475,67 @@ try {
                 </div>
             </div>
 
+            <!-- Edit Product Modal -->
+            <div class="modal fade" id="editProductModal" tabindex="-1" aria-labelledby="editProductModalLabel" aria-hidden="true">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="editProductModalLabel">แก้ไขสินค้า</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <form method="POST" enctype="multipart/form-data" id="editProductForm">
+                            <div class="modal-body">
+                                <input type="hidden" name="edit_product_id" id="edit_product_id">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label class="form-label">ชื่อสินค้า</label>
+                                            <input type="text" class="form-control" name="edit_product_name" id="edit_product_name" required>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label class="form-label">หมวดหมู่</label>
+                                            <select class="form-select" name="edit_category_id" id="edit_category_id" required>
+                                                <?php foreach ($categories as $category): ?>
+                                                    <option value="<?php echo $category['id']; ?>"><?php echo htmlspecialchars($category['name']); ?></option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">คำอธิบาย</label>
+                                    <textarea class="form-control" name="edit_description" id="edit_description" rows="3"></textarea>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label class="form-label">ราคา (บาท)</label>
+                                            <input type="number" class="form-control" name="edit_price" id="edit_price" step="0.01" min="0" required>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label class="form-label">จำนวนในคลัง</label>
+                                            <input type="number" class="form-control" name="edit_stock" id="edit_stock" min="0" required>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">รูปภาพใหม่ (ถ้าต้องการเปลี่ยน)</label>
+                                    <input type="file" class="form-control" name="edit_image" accept="image/*">
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+                                <button type="submit" name="edit_product" class="btn btn-primary">บันทึกการแก้ไข</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
             <!-- รายการสินค้า -->
             <div class="card">
                 <div class="card-header">
@@ -473,7 +569,7 @@ try {
                                         <?php endif; ?>
                                     </td>
                                     <td><?php echo htmlspecialchars($product['name']); ?></td>
-                                    <td><?php echo htmlspecialchars($product['category_name']); ?></td>
+                                    <td data-category-id="<?php echo $product['category_id']; ?>"><?php echo htmlspecialchars($product['category_name']); ?></td>
                                     <td>฿<?php echo number_format($product['price'], 2); ?></td>
                                     <td>
                                         <span class="badge <?php echo $product['stock'] > 0 ? 'bg-success' : 'bg-danger'; ?>">
@@ -481,6 +577,10 @@ try {
                                         </span>
                                     </td>
                                     <td>
+                                        <button type="button" class="btn btn-primary btn-sm me-1" 
+                                                onclick="editProduct(<?php echo $product['id']; ?>, '<?php echo htmlspecialchars($product['name']); ?>', '<?php echo htmlspecialchars($product['description']); ?>', <?php echo $product['price']; ?>, <?php echo $product['stock']; ?>, <?php echo $product['category_id']; ?>)">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
                                         <form method="POST" style="display: inline;">
                                             <input type="hidden" name="product_id" value="<?php echo $product['id']; ?>">
                                             <button type="submit" name="delete_product" class="btn btn-danger btn-sm" 
@@ -529,7 +629,9 @@ try {
                         <div class="card-body">
                             <div class="list-group">
                                 <?php foreach ($categories as $category): ?>
-                                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                                    <div class="list-group-item d-flex justify-content-between align-items-center category-item" 
+                                         onclick="showProductsForCategory(<?php echo $category['id']; ?>, '<?php echo htmlspecialchars($category['name']); ?>')"
+                                         style="cursor: pointer;">
                                         <?php echo htmlspecialchars($category['name']); ?>
                                         <span class="badge bg-primary rounded-pill">
                                             <?php
@@ -724,7 +826,7 @@ try {
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.6/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
     <script>
@@ -747,6 +849,73 @@ try {
             
             // Add active class to clicked nav link
             event.target.classList.add('active');
+        }
+
+        // Function to show products for a specific category
+        function showProductsForCategory(categoryId, categoryName) {
+            // Switch to products section
+            showSection('products');
+            
+            // Update the products section title
+            const productsTitle = document.querySelector('#products h2');
+            productsTitle.innerHTML = `<i class="fas fa-box"></i> จัดการสินค้า - ${categoryName}`;
+            
+            // Filter products by category
+            filterProductsByCategory(categoryId);
+            
+            // Add back button
+            addBackToAllProductsButton();
+        }
+
+        // Function to filter products by category
+        function filterProductsByCategory(categoryId) {
+            const productRows = document.querySelectorAll('#products .table tbody tr');
+            productRows.forEach(row => {
+                const categoryCell = row.querySelector('td:nth-child(3)'); // Category is 3rd column
+                if (categoryCell) {
+                    const rowCategoryId = categoryCell.getAttribute('data-category-id');
+                    if (rowCategoryId == categoryId) {
+                        row.style.display = '';
+                    } else {
+                        row.style.display = 'none';
+                    }
+                }
+            });
+        }
+
+        // Function to add back button to show all products
+        function addBackToAllProductsButton() {
+            const productsSection = document.getElementById('products');
+            let backButton = document.getElementById('back-to-all-products');
+            
+            if (!backButton) {
+                backButton = document.createElement('button');
+                backButton.id = 'back-to-all-products';
+                backButton.className = 'btn btn-secondary mb-3';
+                backButton.innerHTML = '<i class="fas fa-arrow-left"></i> ดูสินค้าทั้งหมด';
+                backButton.onclick = showAllProducts;
+                
+                const productsTitle = document.querySelector('#products h2');
+                productsTitle.parentNode.insertBefore(backButton, productsTitle.nextSibling);
+            }
+        }
+
+        // Function to show all products
+        function showAllProducts() {
+            const productRows = document.querySelectorAll('#products .table tbody tr');
+            productRows.forEach(row => {
+                row.style.display = '';
+            });
+            
+            // Update title back to original
+            const productsTitle = document.querySelector('#products h2');
+            productsTitle.innerHTML = '<i class="fas fa-box"></i> จัดการสินค้า';
+            
+            // Remove back button
+            const backButton = document.getElementById('back-to-all-products');
+            if (backButton) {
+                backButton.remove();
+            }
         }
 
         // Sales Chart
@@ -842,6 +1011,20 @@ try {
             });
         });
 
+        // Function to edit product
+        function editProduct(id, name, description, price, stock, categoryId) {
+            document.getElementById('edit_product_id').value = id;
+            document.getElementById('edit_product_name').value = name;
+            document.getElementById('edit_description').value = description;
+            document.getElementById('edit_price').value = price;
+            document.getElementById('edit_stock').value = stock;
+            document.getElementById('edit_category_id').value = categoryId;
+            
+            // Show the modal
+            const editModal = new bootstrap.Modal(document.getElementById('editProductModal'));
+            editModal.show();
+        }
+
         // Real-time search for products (bonus feature)
         function searchProducts() {
             const input = document.getElementById('productSearch');
@@ -910,6 +1093,17 @@ try {
             background-color: #f8f9fa;
         }
 
+        .category-item {
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .category-item:hover {
+            background-color: #e3f2fd !important;
+            transform: translateX(5px);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
         /* Custom scrollbar for sidebar */
         .sidebar::-webkit-scrollbar {
             width: 6px;
@@ -934,14 +1128,44 @@ try {
                 width: 100%;
                 height: auto;
                 position: relative;
+                margin-bottom: 1rem;
             }
             
             .main-content {
                 margin-left: 0;
+                padding: 1rem;
             }
             
             .card-stat h3 {
                 font-size: 1.5rem;
+            }
+            
+            .table-responsive {
+                font-size: 0.875rem;
+            }
+            
+            .btn-sm {
+                padding: 0.25rem 0.5rem;
+                font-size: 0.75rem;
+            }
+        }
+
+        @media (max-width: 576px) {
+            .main-content {
+                padding: 0.5rem;
+            }
+            
+            .card-body {
+                padding: 1rem;
+            }
+            
+            .table-responsive {
+                font-size: 0.8rem;
+            }
+            
+            .btn {
+                font-size: 0.875rem;
+                padding: 0.375rem 0.75rem;
             }
         }
 
