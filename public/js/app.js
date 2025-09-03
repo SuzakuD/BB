@@ -37,11 +37,15 @@ async function initializeApp() {
 
 function setupEventListeners() {
     // Search functionality
-    document.getElementById('search-input').addEventListener('keypress', function(e) {
+    const searchInput = document.getElementById('search-input');
+    searchInput.addEventListener('keypress', function(e) {
         if (e.key === 'Enter') {
             searchProducts();
         }
     });
+    
+    // Instant search on input
+    searchInput.addEventListener('input', instantSearch);
     
     // Form submissions
     document.getElementById('login-form').addEventListener('submit', handleLogin);
@@ -73,13 +77,21 @@ function updateAuthUI() {
     if (currentUser) {
         authNav.innerHTML = `
             <li class="nav-item dropdown">
-                <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" 
+                   data-bs-auto-close="true" data-bs-boundary="viewport">
                     <i class="fas fa-user"></i> ${currentUser.username}
                 </a>
-                <ul class="dropdown-menu">
-                    <li><a class="dropdown-item" href="#" onclick="showUserOrders()">คำสั่งซื้อของฉัน</a></li>
+                <ul class="dropdown-menu dropdown-menu-end" style="min-width: 200px;">
+                    <li><a class="dropdown-item" href="#" onclick="showUserOrders()">
+                        <i class="fas fa-shopping-bag me-2"></i>คำสั่งซื้อของฉัน
+                    </a></li>
+                    <li><a class="dropdown-item" href="#" onclick="showAccountSettings()">
+                        <i class="fas fa-cog me-2"></i>ตั้งค่าบัญชี
+                    </a></li>
                     <li><hr class="dropdown-divider"></li>
-                    <li><a class="dropdown-item" href="#" onclick="logout()">ออกจากระบบ</a></li>
+                    <li><a class="dropdown-item text-danger" href="#" onclick="logout()">
+                        <i class="fas fa-sign-out-alt me-2"></i>ออกจากระบบ
+                    </a></li>
                 </ul>
             </li>
         `;
@@ -181,6 +193,85 @@ async function logout() {
     }
 }
 
+function showAccountSettings() {
+    showAlert('ฟีเจอร์นี้จะเปิดใช้งานเร็วๆ นี้', 'info');
+}
+
+function showUserOrders() {
+    if (!currentUser) {
+        showAlert('กรุณาเข้าสู่ระบบก่อน', 'warning');
+        return;
+    }
+    showAlert('ฟีเจอร์นี้จะเปิดใช้งานเร็วๆ นี้', 'info');
+}
+
+async function viewProductDetail(productId) {
+    try {
+        const response = await fetch(`api/products.php?action=detail&id=${productId}`);
+        const data = await response.json();
+        
+        if (data.product) {
+            showProductDetailModal(data.product);
+        } else {
+            showAlert('ไม่พบข้อมูลสินค้า', 'danger');
+        }
+    } catch (error) {
+        console.error('Failed to load product detail:', error);
+        showAlert('ไม่สามารถโหลดรายละเอียดสินค้าได้', 'danger');
+    }
+}
+
+function showProductDetailModal(product) {
+    const modal = document.createElement('div');
+    modal.className = 'modal fade';
+    modal.id = 'productDetailModal';
+    modal.innerHTML = `
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">${product.name}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <img src="${product.image ? 'uploads/' + product.image : 'https://via.placeholder.com/400x300?text=No+Image'}" 
+                                 class="img-fluid rounded" alt="${product.name}"
+                                 onerror="this.src='https://via.placeholder.com/400x300?text=No+Image'">
+                        </div>
+                        <div class="col-md-6">
+                            <h4>${product.name}</h4>
+                            <p class="text-muted">${product.category_name || 'ไม่มีหมวดหมู่'}</p>
+                            <div class="mb-3">
+                                <span class="price fs-3">${Number(product.price).toLocaleString()} บาท</span>
+                            </div>
+                            <p class="mb-3">${product.description || 'ไม่มีรายละเอียด'}</p>
+                            <div class="mb-3">
+                                <strong>สต็อก:</strong> 
+                                <span class="${product.stock < 10 ? 'stock-low' : product.stock < 50 ? 'stock-medium' : 'stock-high'}">
+                                    ${product.stock === 0 ? 'สินค้าหมด' : `${product.stock} ชิ้น`}
+                                </span>
+                            </div>
+                            <button class="btn btn-primary btn-lg w-100" onclick="addToCart(${product.id})" 
+                                    ${product.stock === 0 ? 'disabled' : ''}>
+                                <i class="fas fa-cart-plus"></i> เพิ่มลงตะกร้า
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    const bsModal = new bootstrap.Modal(modal);
+    bsModal.show();
+    
+    modal.addEventListener('hidden.bs.modal', () => {
+        document.body.removeChild(modal);
+    });
+}
+
 // Page loading functions
 async function loadPage(page) {
     currentPage = page;
@@ -251,26 +342,37 @@ async function loadHomePage() {
 function createProductCard(product) {
     const stockClass = product.stock < 10 ? 'stock-low' : product.stock < 50 ? 'stock-medium' : 'stock-high';
     const stockText = product.stock === 0 ? 'สินค้าหมด' : `คงเหลือ ${product.stock} ชิ้น`;
+    const categoryText = product.category_name ? `<small class="text-muted d-block mb-2">${product.category_name}</small>` : '';
     
     return `
         <div class="col-md-4 col-lg-3 mb-4">
             <div class="card product-card h-100">
-                <img src="${product.image || 'https://via.placeholder.com/300x200?text=No+Image'}" 
-                     class="card-img-top product-image" alt="${product.name}">
+                <div class="position-relative">
+                    <img src="${product.image ? 'uploads/' + product.image : 'https://via.placeholder.com/300x200?text=No+Image'}" 
+                         class="card-img-top product-image" alt="${product.name}"
+                         onerror="this.src='https://via.placeholder.com/300x200?text=No+Image'">
+                    ${product.stock === 0 ? '<div class="position-absolute top-0 start-0 m-2"><span class="badge bg-danger">สินค้าหมด</span></div>' : ''}
+                    ${product.stock < 10 && product.stock > 0 ? '<div class="position-absolute top-0 start-0 m-2"><span class="badge bg-warning text-dark">สต็อกต่ำ</span></div>' : ''}
+                </div>
                 <div class="card-body d-flex flex-column">
                     <h5 class="card-title">${product.name}</h5>
-                    <p class="card-text text-muted small flex-grow-1">${product.description || ''}</p>
+                    ${categoryText}
+                    <p class="card-text text-muted small flex-grow-1 mt-2">${product.description || 'ไม่มีรายละเอียด'}</p>
                     <div class="mb-2">
                         <span class="price">${Number(product.price).toLocaleString()} บาท</span>
                     </div>
                     <div class="mb-3">
                         <small class="${stockClass}">${stockText}</small>
                     </div>
-                    <button class="btn btn-primary w-100" 
-                            onclick="addToCart(${product.id})" 
-                            ${product.stock === 0 ? 'disabled' : ''}>
-                        <i class="fas fa-cart-plus"></i> เพิ่มลงตะกร้า
-                    </button>
+                    <div class="mt-auto">
+                        <button class="btn btn-primary w-100 mb-2" onclick="addToCart(${product.id})" 
+                                ${product.stock === 0 ? 'disabled' : ''}>
+                            <i class="fas fa-cart-plus"></i> เพิ่มลงตะกร้า
+                        </button>
+                        <button class="btn btn-outline-secondary btn-sm w-100" onclick="viewProductDetail(${product.id})">
+                            <i class="fas fa-eye"></i> ดูรายละเอียด
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -410,6 +512,22 @@ async function searchProducts() {
     }
 }
 
+// Instant search with debouncing
+let searchTimeout;
+function instantSearch() {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+        const searchInput = document.getElementById('search-input');
+        const query = searchInput.value.trim();
+        
+        if (query.length >= 2) {
+            searchProducts();
+        } else if (query.length === 0) {
+            loadPage('home');
+        }
+    }, 300); // 300ms delay for better performance
+}
+
 function updateProductsDisplay(data, title = 'สินค้าทั้งหมด') {
     const mainContent = document.getElementById('main-content');
     
@@ -418,6 +536,7 @@ function updateProductsDisplay(data, title = 'สินค้าทั้งห�
             <h2>${title}</h2>
             <div class="d-flex align-items-center gap-2">
                 <span class="text-muted">แสดง ${data.products.length} จาก ${data.total} รายการ</span>
+                ${data.query ? `<span class="badge bg-primary">ค้นหา: "${data.query}"</span>` : ''}
             </div>
         </div>
         <div class="row" id="products-container">
@@ -429,6 +548,9 @@ function updateProductsDisplay(data, title = 'สินค้าทั้งห�
                 <i class="fas fa-search fa-3x text-muted mb-3"></i>
                 <h4>ไม่พบสินค้า</h4>
                 <p class="text-muted">ลองค้นหาด้วยคำอื่น หรือดูสินค้าทั้งหมด</p>
+                <button class="btn btn-outline-primary" onclick="loadPage('home')">
+                    <i class="fas fa-home"></i> กลับไปหน้าหลัก
+                </button>
             </div>
         `;
     } else {
@@ -514,7 +636,11 @@ async function showCart() {
                             <p class="text-muted mb-1">${Number(item.price).toLocaleString()} บาท</p>
                             <div class="quantity-controls">
                                 <button class="quantity-btn" onclick="updateCartQuantity(${item.id}, ${item.quantity - 1})">-</button>
-                                <span class="mx-2">${item.quantity}</span>
+                                <input type="number" class="form-control quantity-input" 
+                                       value="${item.quantity}" min="1" max="${item.stock}" 
+                                       style="width: 60px; text-align: center;"
+                                       onchange="updateCartQuantity(${item.id}, this.value)"
+                                       onblur="if(this.value < 1) this.value = 1; if(this.value > ${item.stock}) this.value = ${item.stock};">
                                 <button class="quantity-btn" onclick="updateCartQuantity(${item.id}, ${item.quantity + 1})" 
                                         ${item.quantity >= item.stock ? 'disabled' : ''}>+</button>
                             </div>
@@ -531,6 +657,16 @@ async function showCart() {
             
             cartItems.innerHTML = html;
             checkoutBtn.disabled = false;
+            
+            // Add clear cart button
+            if (!document.getElementById('clear-cart-btn')) {
+                const clearCartBtn = document.createElement('button');
+                clearCartBtn.id = 'clear-cart-btn';
+                clearCartBtn.className = 'btn btn-outline-danger btn-sm mt-2';
+                clearCartBtn.innerHTML = '<i class="fas fa-trash"></i> ล้างตะกร้า';
+                clearCartBtn.onclick = clearCart;
+                cartItems.appendChild(clearCartBtn);
+            }
         }
         
         cartTotal.textContent = Number(data.total).toLocaleString();
@@ -587,6 +723,32 @@ async function removeFromCart(productId) {
     } catch (error) {
         console.error('Failed to remove from cart:', error);
         showAlert('ไม่สามารถลบสินค้าจากตะกร้าได้', 'danger');
+    }
+}
+
+async function clearCart() {
+    if (!confirm('คุณแน่ใจหรือไม่ที่จะล้างตะกร้าสินค้าทั้งหมด?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('api/cart.php?action=clear', {
+            method: 'DELETE'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            cartCount = 0;
+            document.getElementById('cart-count').textContent = cartCount;
+            showAlert('ล้างตะกร้าสินค้าเรียบร้อยแล้ว', 'success');
+            new bootstrap.Modal(document.getElementById('cartModal')).hide();
+        } else {
+            showAlert(data.error, 'danger');
+        }
+    } catch (error) {
+        console.error('Failed to clear cart:', error);
+        showAlert('ไม่สามารถล้างตะกร้าสินค้าได้', 'danger');
     }
 }
 
