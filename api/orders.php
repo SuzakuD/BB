@@ -1,400 +1,265 @@
 <?php
+session_start();
 require_once '../config/database.php';
+require_once '../includes/functions.php';
 
 header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE');
-header('Access-Control-Allow-Headers: Content-Type');
 
 $method = $_SERVER['REQUEST_METHOD'];
 $action = $_GET['action'] ?? '';
 
-try {
-    $pdo = getDB();
-    
-    switch ($method) {
-        case 'GET':
-            handleGet($pdo, $action);
-            break;
-        case 'POST':
-            handlePost($pdo, $action);
-            break;
-        case 'PUT':
-            handlePut($pdo, $action);
-            break;
-        default:
-            throw new Exception('Method not allowed');
-    }
-} catch (Exception $e) {
-    http_response_code(400);
-    echo json_encode(['error' => $e->getMessage()]);
-}
-
-function handleGet($pdo, $action) {
-    switch ($action) {
-        case 'list':
-            getOrders($pdo);
-            break;
-        case 'detail':
-            getOrderDetail($pdo);
-            break;
-        case 'user':
-            getUserOrders($pdo);
-            break;
-        case 'receipt':
-            getReceipt($pdo);
-            break;
-        default:
-            throw new Exception('Invalid action');
-    }
-}
-
-function handlePost($pdo, $action) {
-    $input = json_decode(file_get_contents('php://input'), true);
-    
-    switch ($action) {
-        case 'create':
-            createOrder($pdo, $input);
-            break;
-        case 'checkout':
-            processCheckout($pdo, $input);
-            break;
-        default:
-            throw new Exception('Invalid action');
-    }
-}
-
-function handlePut($pdo, $action) {
-    requireAdmin();
-    $input = json_decode(file_get_contents('php://input'), true);
-    
-    switch ($action) {
-        case 'status':
-            updateOrderStatus($pdo, $input);
-            break;
-        default:
-            throw new Exception('Invalid action');
-    }
-}
-
-function getOrders($pdo) {
-    requireAdmin();
-    
-    $page = $_GET['page'] ?? 1;
-    $limit = $_GET['limit'] ?? 20;
-    $offset = ($page - 1) * $limit;
-    
-    $sql = "SELECT o.*, u.username 
-            FROM orders o 
-            LEFT JOIN users u ON o.user_id = u.id 
-            ORDER BY o.created_at DESC 
-            LIMIT ? OFFSET ?";
-    
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute([$limit, $offset]);
-    $orders = $stmt->fetchAll();
-    
-    // Get total count
-    $countStmt = $pdo->query("SELECT COUNT(*) FROM orders");
-    $total = $countStmt->fetchColumn();
-    
-    echo json_encode([
-        'orders' => $orders,
-        'total' => $total,
-        'page' => $page,
-        'pages' => ceil($total / $limit)
-    ]);
-}
-
-function getOrderDetail($pdo) {
-    $orderId = $_GET['id'] ?? 0;
-    
-    if (!$orderId) {
-        throw new Exception('ไม่พบรหัสคำสั่งซื้อ');
-    }
-    
-    // Check permission
-    if (!isAdmin()) {
-        requireLogin();
-        $stmt = $pdo->prepare("SELECT user_id FROM orders WHERE id = ?");
-        $stmt->execute([$orderId]);
-        $orderUserId = $stmt->fetchColumn();
-        
-        if ($orderUserId != $_SESSION['user_id']) {
-            throw new Exception('ไม่มีสิทธิ์เข้าถึงคำสั่งซื้อนี้');
+switch ($action) {
+    case 'create':
+        if (!isLoggedIn()) {
+            echo json_encode(['success' => false, 'message' => 'Login required']);
+            exit;
         }
-    }
-    
-    // Get order details
-    $sql = "SELECT o.*, u.username 
-            FROM orders o 
-            LEFT JOIN users u ON o.user_id = u.id 
-            WHERE o.id = ?";
-    
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute([$orderId]);
-    $order = $stmt->fetch();
-    
-    if (!$order) {
-        throw new Exception('ไม่พบคำสั่งซื้อ');
-    }
-    
-    // Get order items
-    $sql = "SELECT oi.*, p.name as product_name, p.image 
-            FROM order_items oi 
-            LEFT JOIN products p ON oi.product_id = p.id 
-            WHERE oi.order_id = ?";
-    
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute([$orderId]);
-    $items = $stmt->fetchAll();
-    
-    $order['items'] = $items;
-    
-    echo json_encode(['order' => $order]);
-}
-
-function getUserOrders($pdo) {
-    requireLogin();
-    
-    $page = $_GET['page'] ?? 1;
-    $limit = $_GET['limit'] ?? 10;
-    $offset = ($page - 1) * $limit;
-    
-    $sql = "SELECT * FROM orders 
-            WHERE user_id = ? 
-            ORDER BY created_at DESC 
-            LIMIT ? OFFSET ?";
-    
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute([$_SESSION['user_id'], $limit, $offset]);
-    $orders = $stmt->fetchAll();
-    
-    // Get total count
-    $countSql = "SELECT COUNT(*) FROM orders WHERE user_id = ?";
-    $countStmt = $pdo->prepare($countSql);
-    $countStmt->execute([$_SESSION['user_id']]);
-    $total = $countStmt->fetchColumn();
-    
-    echo json_encode([
-        'orders' => $orders,
-        'total' => $total,
-        'page' => $page,
-        'pages' => ceil($total / $limit)
-    ]);
-}
-
-function processCheckout($pdo, $input) {
-    requireLogin();
-    
-    $cart = $_SESSION['cart'] ?? [];
-    
-    if (empty($cart)) {
-        throw new Exception('ตะกร้าสินค้าว่าง');
-    }
-    
-    $pdo->beginTransaction();
-    
-    try {
-        // Calculate total and validate stock
-        $total = 0;
-        $orderItems = [];
         
-        $placeholders = str_repeat('?,', count($cart) - 1) . '?';
-        $sql = "SELECT * FROM products WHERE id IN ($placeholders)";
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute(array_keys($cart));
-        $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
-        foreach ($products as $product) {
-            $quantity = $cart[$product['id']];
+        if ($method === 'POST') {
+            $input = json_decode(file_get_contents('php://input'), true);
             
-            if ($quantity > $product['stock']) {
-                throw new Exception("สินค้า {$product['name']} มีในสต็อกไม่เพียงพอ");
+            if (!validateCSRFToken($input['csrf_token'] ?? '')) {
+                http_response_code(403);
+                echo json_encode(['success' => false, 'message' => 'Invalid CSRF token']);
+                exit;
             }
             
-            $itemTotal = $product['price'] * $quantity;
-            $total += $itemTotal;
+            $cartItems = getCartItems();
+            if (empty($cartItems)) {
+                echo json_encode(['success' => false, 'message' => 'Cart is empty']);
+                exit;
+            }
             
-            $orderItems[] = [
-                'product_id' => $product['id'],
-                'quantity' => $quantity,
-                'price' => $product['price'],
-                'total' => $itemTotal,
-                'name' => $product['name'],
-                'image' => $product['image']
+            // Calculate totals
+            $subtotal = getCartTotal();
+            $taxRate = 0.08; // 8% tax
+            $taxAmount = $subtotal * $taxRate;
+            $shippingAmount = $subtotal >= 75 ? 0 : 9.99; // Free shipping over $75
+            $discountAmount = 0;
+            
+            // Apply promotion if provided
+            if (!empty($input['promotion_code'])) {
+                $promotionResult = applyPromotion($input['promotion_code'], $subtotal);
+                if ($promotionResult) {
+                    $discountAmount = $promotionResult['discount'];
+                    if ($promotionResult['promotion']['type'] === 'free_shipping') {
+                        $shippingAmount = 0;
+                    }
+                }
+            }
+            
+            $totalAmount = $subtotal + $taxAmount + $shippingAmount - $discountAmount;
+            
+            $orderData = [
+                'user_id' => $_SESSION['user_id'],
+                'subtotal' => $subtotal,
+                'tax_amount' => $taxAmount,
+                'shipping_amount' => $shippingAmount,
+                'discount_amount' => $discountAmount,
+                'total_amount' => $totalAmount,
+                'payment_method' => $input['payment_method'] ?? 'credit_card',
+                'shipping_address' => $input['shipping_address'] ?? [],
+                'billing_address' => $input['billing_address'] ?? [],
+                'notes' => $input['notes'] ?? ''
             ];
-        }
-        
-        // Apply promotion if provided
-        $promotionCode = $input['promotion_code'] ?? '';
-        $discount = 0;
-        
-        if (!empty($promotionCode)) {
-            $stmt = $pdo->prepare("SELECT * FROM promotions WHERE code = ? AND expire_date > datetime('now')");
-            $stmt->execute([$promotionCode]);
-            $promotion = $stmt->fetch();
             
-            if ($promotion) {
-                $discount = ($total * $promotion['discount']) / 100;
-                $total -= $discount;
+            $orderId = createOrder($orderData);
+            
+            if ($orderId) {
+                // Send notification
+                sendNotification(
+                    $_SESSION['user_id'],
+                    'order_created',
+                    'Order Confirmed',
+                    'Your order has been placed successfully. Order #' . $orderId,
+                    ['order_id' => $orderId]
+                );
+                
+                echo json_encode([
+                    'success' => true,
+                    'message' => 'Order created successfully',
+                    'order_id' => $orderId
+                ]);
+            } else {
+                echo json_encode(['success' => false, 'message' => 'Failed to create order']);
             }
         }
+        break;
         
-        // Create order
-        $stmt = $pdo->prepare("INSERT INTO orders (user_id, total, status) VALUES (?, ?, 'confirmed')");
-        $stmt->execute([$_SESSION['user_id'], $total]);
-        $orderId = $pdo->lastInsertId();
-        
-        // Create order items and update stock
-        foreach ($orderItems as $item) {
-            $stmt = $pdo->prepare("INSERT INTO order_items (order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)");
-            $stmt->execute([$orderId, $item['product_id'], $item['quantity'], $item['price']]);
-            
-            // Update product stock
-            $stmt = $pdo->prepare("UPDATE products SET stock = stock - ? WHERE id = ?");
-            $stmt->execute([$item['quantity'], $item['product_id']]);
+    case 'list':
+        if (!isLoggedIn()) {
+            echo json_encode(['success' => false, 'message' => 'Login required']);
+            exit;
         }
         
-        // Generate receipt
-        $receiptHtml = generateReceiptHtml($orderId, $orderItems, $total, $discount);
-        $stmt = $pdo->prepare("INSERT INTO receipts (order_id, html) VALUES (?, ?)");
-        $stmt->execute([$orderId, $receiptHtml]);
+        $orders = getUserOrders($_SESSION['user_id']);
+        echo json_encode(['success' => true, 'orders' => $orders]);
+        break;
         
-        $pdo->commit();
+    case 'get':
+        if (!isLoggedIn()) {
+            echo json_encode(['success' => false, 'message' => 'Login required']);
+            exit;
+        }
         
-        // Clear cart
-        $_SESSION['cart'] = [];
+        $orderId = (int)($_GET['id'] ?? 0);
+        if ($orderId <= 0) {
+            echo json_encode(['success' => false, 'message' => 'Invalid order ID']);
+            exit;
+        }
+        
+        $order = getOrder($orderId);
+        if (!$order) {
+            echo json_encode(['success' => false, 'message' => 'Order not found']);
+            exit;
+        }
+        
+        // Check if user owns this order or is admin
+        if ($order['user_id'] != $_SESSION['user_id'] && !isAdmin()) {
+            echo json_encode(['success' => false, 'message' => 'Access denied']);
+            exit;
+        }
+        
+        $orderItems = getOrderItems($orderId);
+        $order['items'] = $orderItems;
+        
+        echo json_encode(['success' => true, 'order' => $order]);
+        break;
+        
+    case 'validate_promotion':
+        if ($method === 'POST') {
+            $input = json_decode(file_get_contents('php://input'), true);
+            $code = $input['code'] ?? '';
+            $orderAmount = (float)($input['order_amount'] ?? 0);
+            
+            if (empty($code)) {
+                echo json_encode(['success' => false, 'message' => 'Promotion code required']);
+                exit;
+            }
+            
+            $result = applyPromotion($code, $orderAmount);
+            if ($result) {
+                echo json_encode([
+                    'success' => true,
+                    'promotion' => $result['promotion'],
+                    'discount' => $result['discount']
+                ]);
+            } else {
+                echo json_encode(['success' => false, 'message' => 'Invalid or expired promotion code']);
+            }
+        }
+        break;
+        
+    case 'receipt':
+        if (!isLoggedIn()) {
+            echo json_encode(['success' => false, 'message' => 'Login required']);
+            exit;
+        }
+        
+        $orderId = (int)($_GET['id'] ?? 0);
+        if ($orderId <= 0) {
+            echo json_encode(['success' => false, 'message' => 'Invalid order ID']);
+            exit;
+        }
+        
+        $order = getOrder($orderId);
+        if (!$order || $order['user_id'] != $_SESSION['user_id']) {
+            echo json_encode(['success' => false, 'message' => 'Order not found']);
+            exit;
+        }
+        
+        $orderItems = getOrderItems($orderId);
+        
+        // Generate receipt HTML
+        $receiptHtml = generateReceiptHTML($order, $orderItems);
         
         echo json_encode([
             'success' => true,
-            'message' => 'สั่งซื้อสำเร็จ',
-            'order_id' => $orderId,
-            'total' => $total
+            'receipt' => $receiptHtml,
+            'order_number' => $order['order_number']
         ]);
+        break;
         
-    } catch (Exception $e) {
-        $pdo->rollback();
-        throw $e;
-    }
+    default:
+        http_response_code(404);
+        echo json_encode(['success' => false, 'message' => 'Action not found']);
 }
 
-function updateOrderStatus($pdo, $input) {
-    $orderId = $input['order_id'] ?? 0;
-    $status = $input['status'] ?? '';
-    
-    if (!$orderId || empty($status)) {
-        throw new Exception('กรุณากรอกข้อมูลให้ครบถ้วน');
-    }
-    
-    $validStatuses = ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'];
-    
-    if (!in_array($status, $validStatuses)) {
-        throw new Exception('สถานะไม่ถูกต้อง');
-    }
-    
-    $stmt = $pdo->prepare("UPDATE orders SET status = ? WHERE id = ?");
-    $stmt->execute([$status, $orderId]);
-    
-    echo json_encode([
-        'success' => true,
-        'message' => 'อัปเดตสถานะคำสั่งซื้อสำเร็จ'
-    ]);
-}
-
-function getReceipt($pdo) {
-    $orderId = $_GET['order_id'] ?? 0;
-    
-    if (!$orderId) {
-        throw new Exception('ไม่พบรหัสคำสั่งซื้อ');
-    }
-    
-    // Check permission
-    if (!isAdmin()) {
-        requireLogin();
-        $stmt = $pdo->prepare("SELECT user_id FROM orders WHERE id = ?");
-        $stmt->execute([$orderId]);
-        $orderUserId = $stmt->fetchColumn();
-        
-        if ($orderUserId != $_SESSION['user_id']) {
-            throw new Exception('ไม่มีสิทธิ์เข้าถึงใบเสร็จนี้');
-        }
-    }
-    
-    $stmt = $pdo->prepare("SELECT html FROM receipts WHERE order_id = ?");
-    $stmt->execute([$orderId]);
-    $receiptHtml = $stmt->fetchColumn();
-    
-    if (!$receiptHtml) {
-        throw new Exception('ไม่พบใบเสร็จ');
-    }
-    
-    echo json_encode(['receipt_html' => $receiptHtml]);
-}
-
-function generateReceiptHtml($orderId, $items, $total, $discount = 0) {
-    $date = date('d/m/Y H:i:s');
-    $subtotal = $total + $discount;
-    
-    $html = "
-    <div class='receipt'>
-        <div class='receipt-header'>
-            <h2>ร้านอุปกรณ์ตกปลา</h2>
-            <p>ใบเสร็จรับเงิน</p>
-            <p>เลขที่: #{$orderId}</p>
-            <p>วันที่: {$date}</p>
+function generateReceiptHTML($order, $orderItems) {
+    $html = '
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Receipt - Order ' . htmlspecialchars($order['order_number']) . '</title>
+        <style>
+            body { font-family: Arial, sans-serif; margin: 20px; }
+            .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 20px; margin-bottom: 20px; }
+            .order-info { margin-bottom: 20px; }
+            .items-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+            .items-table th, .items-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            .items-table th { background-color: #f2f2f2; }
+            .totals { text-align: right; }
+            .footer { margin-top: 30px; text-align: center; color: #666; }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>Fishing Gear Store</h1>
+            <h2>Order Receipt</h2>
         </div>
         
-        <table class='table table-bordered'>
+        <div class="order-info">
+            <p><strong>Order Number:</strong> ' . htmlspecialchars($order['order_number']) . '</p>
+            <p><strong>Order Date:</strong> ' . date('F j, Y g:i A', strtotime($order['created_at'])) . '</p>
+            <p><strong>Status:</strong> ' . ucfirst($order['status']) . '</p>
+        </div>
+        
+        <table class="items-table">
             <thead>
                 <tr>
-                    <th>สินค้า</th>
-                    <th>จำนวน</th>
-                    <th>ราคา</th>
-                    <th>รวม</th>
+                    <th>Product</th>
+                    <th>SKU</th>
+                    <th>Quantity</th>
+                    <th>Price</th>
+                    <th>Total</th>
                 </tr>
             </thead>
-            <tbody>";
+            <tbody>';
     
-    foreach ($items as $item) {
-        $html .= "
+    foreach ($orderItems as $item) {
+        $html .= '
                 <tr>
-                    <td>{$item['name']}</td>
-                    <td>{$item['quantity']}</td>
-                    <td>" . number_format($item['price'], 2) . " บาท</td>
-                    <td>" . number_format($item['total'], 2) . " บาท</td>
-                </tr>";
+                    <td>' . htmlspecialchars($item['product_name']) . '</td>
+                    <td>' . htmlspecialchars($item['product_sku']) . '</td>
+                    <td>' . $item['quantity'] . '</td>
+                    <td>$' . number_format($item['price'], 2) . '</td>
+                    <td>$' . number_format($item['total'], 2) . '</td>
+                </tr>';
     }
     
-    $html .= "
+    $html .= '
             </tbody>
         </table>
         
-        <div class='receipt-summary'>
-            <div class='d-flex justify-content-between'>
-                <span>ยอดรวม:</span>
-                <span>" . number_format($subtotal, 2) . " บาท</span>
-            </div>";
+        <div class="totals">
+            <p><strong>Subtotal:</strong> $' . number_format($order['subtotal'], 2) . '</p>
+            <p><strong>Tax:</strong> $' . number_format($order['tax_amount'], 2) . '</p>
+            <p><strong>Shipping:</strong> $' . number_format($order['shipping_amount'], 2) . '</p>';
     
-    if ($discount > 0) {
-        $html .= "
-            <div class='d-flex justify-content-between'>
-                <span>ส่วนลด:</span>
-                <span>-" . number_format($discount, 2) . " บาท</span>
-            </div>";
+    if ($order['discount_amount'] > 0) {
+        $html .= '<p><strong>Discount:</strong> -$' . number_format($order['discount_amount'], 2) . '</p>';
     }
     
-    $html .= "
-            <div class='receipt-total d-flex justify-content-between'>
-                <span>ยอดสุทธิ:</span>
-                <span>" . number_format($total, 2) . " บาท</span>
-            </div>
+    $html .= '
+            <p><strong>Total:</strong> $' . number_format($order['total_amount'], 2) . '</p>
         </div>
         
-        <div class='text-center mt-4'>
-            <p>ขอบคุณที่ใช้บริการ</p>
+        <div class="footer">
+            <p>Thank you for your business!</p>
+            <p>Fishing Gear Store - Premium Fishing Equipment</p>
         </div>
-    </div>";
+    </body>
+    </html>';
     
     return $html;
 }
