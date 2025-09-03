@@ -48,6 +48,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: cart.php');
         exit;
     }
+    
+    if (isset($_POST['clear_cart'])) {
+        $_SESSION['cart'] = [];
+        
+        $_SESSION['message'] = "ล้างตะกร้าเรียบร้อยแล้ว";
+        $_SESSION['message_type'] = "success";
+        
+        header('Location: cart.php');
+        exit;
+    }
 }
 
 // ดึงข้อมูลสินค้าในตะกร้า
@@ -500,6 +510,10 @@ if (isset($_SESSION['cart'])) {
                         </a>
                         <button type="submit" name="update_cart" class="btn btn-primary">
                             <i class="fas fa-sync"></i> อัพเดตตะกร้า
+                        </button>
+                        <button type="submit" name="clear_cart" class="btn btn-warning" 
+                                onclick="return confirm('คุณแน่ใจหรือไม่ที่จะลบสินค้าทั้งหมดออกจากตะกร้า?')">
+                            <i class="fas fa-trash-alt"></i> ล้างตะกร้า
                         </button>
                         <a href="checkout.php" class="btn btn-success">
                             <i class="fas fa-credit-card"></i> ชำระเงิน

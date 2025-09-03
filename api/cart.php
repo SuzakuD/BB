@@ -1,229 +1,148 @@
 <?php
-require_once '../config/database.php';
+session_start();
+require_once '../config.php';
 
 header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE');
-header('Access-Control-Allow-Headers: Content-Type');
 
-$method = $_SERVER['REQUEST_METHOD'];
-$action = $_GET['action'] ?? '';
-
-try {
-    $pdo = getDB();
-    
-    switch ($method) {
-        case 'GET':
-            handleGet($pdo, $action);
-            break;
-        case 'POST':
-            handlePost($pdo, $action);
-            break;
-        case 'PUT':
-            handlePut($pdo, $action);
-            break;
-        case 'DELETE':
-            handleDelete($pdo, $action);
-            break;
-        default:
-            throw new Exception('Method not allowed');
-    }
-} catch (Exception $e) {
-    http_response_code(400);
-    echo json_encode(['error' => $e->getMessage()]);
-}
-
-function handleGet($pdo, $action) {
-    switch ($action) {
-        case 'items':
-            getCartItems();
-            break;
-        case 'count':
-            getCartCount();
-            break;
-        default:
-            getCartItems();
-    }
-}
-
-function handlePost($pdo, $action) {
-    $input = json_decode(file_get_contents('php://input'), true);
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = $_GET['action'] ?? '';
     
     switch ($action) {
+        case 'clear':
+            $_SESSION['cart'] = [];
+            echo json_encode(['success' => true, 'message' => 'ล้างตะกร้าเรียบร้อยแล้ว']);
+            break;
+            
+        case 'update':
+            $product_id = (int)($_POST['product_id'] ?? 0);
+            $quantity = (int)($_POST['quantity'] ?? 0);
+            
+            if ($product_id > 0) {
+                if ($quantity <= 0) {
+                    unset($_SESSION['cart'][$product_id]);
+                } else {
+                    $_SESSION['cart'][$product_id] = $quantity;
+                }
+                echo json_encode(['success' => true, 'message' => 'อัพเดตตะกร้าเรียบร้อยแล้ว']);
+            } else {
+                echo json_encode(['success' => false, 'message' => 'ข้อมูลไม่ถูกต้อง']);
+            }
+            break;
+            
         case 'add':
-            addToCart($pdo, $input);
+            $product_id = (int)($_POST['product_id'] ?? 0);
+            $quantity = (int)($_POST['quantity'] ?? 1);
+            
+            if ($product_id > 0) {
+                if (!isset($_SESSION['cart'])) {
+                    $_SESSION['cart'] = [];
+                }
+                
+                if (isset($_SESSION['cart'][$product_id])) {
+                    $_SESSION['cart'][$product_id] += $quantity;
+                } else {
+                    $_SESSION['cart'][$product_id] = $quantity;
+                }
+                
+                echo json_encode(['success' => true, 'message' => 'เพิ่มสินค้าลงตะกร้าเรียบร้อยแล้ว']);
+            } else {
+                echo json_encode(['success' => false, 'message' => 'ข้อมูลไม่ถูกต้อง']);
+            }
             break;
+            
         default:
-            throw new Exception('Invalid action');
+            echo json_encode(['success' => false, 'message' => 'การกระทำไม่ถูกต้อง']);
     }
-}
-
-function handlePut($pdo, $action) {
+} else if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    $action = $_GET['action'] ?? '';
+    
+    switch ($action) {
+        case 'count':
+            $count = isset($_SESSION['cart']) ? array_sum($_SESSION['cart']) : 0;
+            echo json_encode(['count' => $count]);
+            break;
+            
+        case 'items':
+            $pdo = getConnection();
+            $cart_items = [];
+            $total = 0;
+            
+            if (isset($_SESSION['cart']) && !empty($_SESSION['cart'])) {
+                $product_ids = array_keys($_SESSION['cart']);
+                $placeholders = str_repeat('?,', count($product_ids) - 1) . '?';
+                
+                $stmt = $pdo->prepare("SELECT * FROM products WHERE id IN ($placeholders)");
+                $stmt->execute($product_ids);
+                $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                foreach ($products as $product) {
+                    $quantity = $_SESSION['cart'][$product['id']];
+                    $subtotal = $product['price'] * $quantity;
+                    $total += $subtotal;
+                    
+                    $cart_items[] = [
+                        'id' => $product['id'],
+                        'name' => $product['name'],
+                        'price' => $product['price'],
+                        'quantity' => $quantity,
+                        'subtotal' => $subtotal,
+                        'image' => $product['image'] ? 'uploads/' . $product['image'] : null
+                    ];
+                }
+            }
+            
+            echo json_encode(['items' => $cart_items, 'total' => $total]);
+            break;
+            
+        default:
+            echo json_encode(['success' => false, 'message' => 'การกระทำไม่ถูกต้อง']);
+    }
+} else if ($_SERVER['REQUEST_METHOD'] === 'PUT') {
     $input = json_decode(file_get_contents('php://input'), true);
+    $action = $_GET['action'] ?? '';
     
     switch ($action) {
         case 'update':
-            updateCartItem($pdo, $input);
+            $product_id = (int)($input['product_id'] ?? 0);
+            $quantity = (int)($input['quantity'] ?? 0);
+            
+            if ($product_id > 0) {
+                if ($quantity <= 0) {
+                    unset($_SESSION['cart'][$product_id]);
+                } else {
+                    $_SESSION['cart'][$product_id] = $quantity;
+                }
+                
+                $count = isset($_SESSION['cart']) ? array_sum($_SESSION['cart']) : 0;
+                echo json_encode(['success' => true, 'count' => $count, 'message' => 'อัพเดตตะกร้าเรียบร้อยแล้ว']);
+            } else {
+                echo json_encode(['success' => false, 'message' => 'ข้อมูลไม่ถูกต้อง']);
+            }
             break;
+            
         default:
-            throw new Exception('Invalid action');
+            echo json_encode(['success' => false, 'message' => 'การกระทำไม่ถูกต้อง']);
     }
-}
-
-function handleDelete($pdo, $action) {
+} else if ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
+    $action = $_GET['action'] ?? '';
+    
     switch ($action) {
         case 'remove':
-            removeFromCart();
-            break;
-        case 'clear':
-            clearCart();
-            break;
-        default:
-            throw new Exception('Invalid action');
-    }
-}
-
-function getCartItems() {
-    $cart = $_SESSION['cart'] ?? [];
-    $items = [];
-    $total = 0;
-    
-    if (!empty($cart)) {
-        $pdo = getDB();
-        $placeholders = str_repeat('?,', count($cart) - 1) . '?';
-        $sql = "SELECT * FROM products WHERE id IN ($placeholders)";
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute(array_keys($cart));
-        $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
-        foreach ($products as $product) {
-            $quantity = $cart[$product['id']];
-            $itemTotal = $product['price'] * $quantity;
-            $total += $itemTotal;
+            $product_id = (int)($_GET['product_id'] ?? 0);
             
-            $items[] = [
-                'id' => $product['id'],
-                'name' => $product['name'],
-                'price' => $product['price'],
-                'image' => $product['image'],
-                'quantity' => $quantity,
-                'total' => $itemTotal,
-                'stock' => $product['stock']
-            ];
-        }
+            if ($product_id > 0 && isset($_SESSION['cart'][$product_id])) {
+                unset($_SESSION['cart'][$product_id]);
+                $count = isset($_SESSION['cart']) ? array_sum($_SESSION['cart']) : 0;
+                echo json_encode(['success' => true, 'count' => $count, 'message' => 'ลบสินค้าจากตะกร้าเรียบร้อยแล้ว']);
+            } else {
+                echo json_encode(['success' => false, 'message' => 'ไม่พบสินค้าในตะกร้า']);
+            }
+            break;
+            
+        default:
+            echo json_encode(['success' => false, 'message' => 'การกระทำไม่ถูกต้อง']);
     }
-    
-    echo json_encode([
-        'items' => $items,
-        'total' => $total,
-        'count' => array_sum($cart)
-    ]);
-}
-
-function getCartCount() {
-    $cart = $_SESSION['cart'] ?? [];
-    $count = array_sum($cart);
-    
-    echo json_encode(['count' => $count]);
-}
-
-function addToCart($pdo, $input) {
-    $productId = $input['product_id'] ?? 0;
-    $quantity = $input['quantity'] ?? 1;
-    
-    if (!$productId || $quantity <= 0) {
-        throw new Exception('ข้อมูลไม่ถูกต้อง');
-    }
-    
-    // Check if product exists and has enough stock
-    $stmt = $pdo->prepare("SELECT * FROM products WHERE id = ?");
-    $stmt->execute([$productId]);
-    $product = $stmt->fetch();
-    
-    if (!$product) {
-        throw new Exception('ไม่พบสินค้า');
-    }
-    
-    // Initialize cart if not exists
-    if (!isset($_SESSION['cart'])) {
-        $_SESSION['cart'] = [];
-    }
-    
-    $currentQuantity = $_SESSION['cart'][$productId] ?? 0;
-    $newQuantity = $currentQuantity + $quantity;
-    
-    if ($newQuantity > $product['stock']) {
-        throw new Exception('สินค้าในสต็อกไม่เพียงพอ');
-    }
-    
-    $_SESSION['cart'][$productId] = $newQuantity;
-    
-    echo json_encode([
-        'success' => true,
-        'message' => 'เพิ่มสินค้าในตะกร้าสำเร็จ',
-        'count' => array_sum($_SESSION['cart'])
-    ]);
-}
-
-function updateCartItem($pdo, $input) {
-    $productId = $input['product_id'] ?? 0;
-    $quantity = $input['quantity'] ?? 0;
-    
-    if (!$productId) {
-        throw new Exception('ไม่พบรหัสสินค้า');
-    }
-    
-    if (!isset($_SESSION['cart'])) {
-        $_SESSION['cart'] = [];
-    }
-    
-    if ($quantity <= 0) {
-        unset($_SESSION['cart'][$productId]);
-    } else {
-        // Check stock
-        $stmt = $pdo->prepare("SELECT stock FROM products WHERE id = ?");
-        $stmt->execute([$productId]);
-        $stock = $stmt->fetchColumn();
-        
-        if ($quantity > $stock) {
-            throw new Exception('สินค้าในสต็อกไม่เพียงพอ');
-        }
-        
-        $_SESSION['cart'][$productId] = $quantity;
-    }
-    
-    echo json_encode([
-        'success' => true,
-        'message' => 'อัปเดตตะกร้าสำเร็จ',
-        'count' => array_sum($_SESSION['cart'])
-    ]);
-}
-
-function removeFromCart() {
-    $productId = $_GET['product_id'] ?? 0;
-    
-    if (!$productId) {
-        throw new Exception('ไม่พบรหัสสินค้า');
-    }
-    
-    if (isset($_SESSION['cart'][$productId])) {
-        unset($_SESSION['cart'][$productId]);
-    }
-    
-    echo json_encode([
-        'success' => true,
-        'message' => 'ลบสินค้าจากตะกร้าสำเร็จ',
-        'count' => array_sum($_SESSION['cart'] ?? [])
-    ]);
-}
-
-function clearCart() {
-    $_SESSION['cart'] = [];
-    
-    echo json_encode([
-        'success' => true,
-        'message' => 'ล้างตะกร้าสำเร็จ',
-        'count' => 0
-    ]);
+} else {
+    echo json_encode(['success' => false, 'message' => 'Method not allowed']);
 }
 ?>

@@ -598,6 +598,12 @@ if (isset($_GET['order_detail'])) {
                                 </tr>
                             </tfoot>
                         </table>
+                        
+                        <div style="margin-top: 20px; text-align: center;">
+                            <button onclick="printReceipt(${order.id})" style="background: #27ae60; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;">
+                                <i class="fas fa-print"></i> พิมพ์ใบเสร็จ
+                            </button>
+                        </div>
                     `;
                     
                     document.getElementById('modalBody').innerHTML = html;
@@ -625,6 +631,109 @@ if (isset($_GET['order_detail'])) {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2
             }).format(price) + ' บาท';
+        }
+
+        function printReceipt(orderId) {
+            // Create a new window for printing
+            const printWindow = window.open('', '_blank');
+            
+            // Fetch order details for printing
+            fetch('orders.php?order_detail=' + orderId)
+                .then(response => response.json())
+                .then(data => {
+                    const order = data.order;
+                    const items = data.items;
+                    
+                    const printContent = `
+                        <!DOCTYPE html>
+                        <html>
+                        <head>
+                            <title>ใบเสร็จรับเงิน - คำสั่งซื้อ #${String(order.id).padStart(6, '0')}</title>
+                            <style>
+                                body { font-family: Arial, sans-serif; margin: 20px; }
+                                .header { text-align: center; margin-bottom: 30px; }
+                                .header h1 { color: #2c3e50; margin-bottom: 10px; }
+                                .order-info { margin-bottom: 20px; }
+                                .order-info p { margin: 5px 0; }
+                                table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+                                th, td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
+                                th { background-color: #f8f9fa; font-weight: bold; }
+                                .total { font-size: 18px; font-weight: bold; color: #e74c3c; }
+                                .footer { text-align: center; margin-top: 30px; color: #666; }
+                                @media print {
+                                    body { margin: 0; }
+                                    .no-print { display: none; }
+                                }
+                            </style>
+                        </head>
+                        <body>
+                            <div class="header">
+                                <h1>ร้านอุปกรณ์ตกปลา</h1>
+                                <p>ใบเสร็จรับเงิน</p>
+                            </div>
+                            
+                            <div class="order-info">
+                                <p><strong>เลขที่คำสั่งซื้อ:</strong> #${String(order.id).padStart(6, '0')}</p>
+                                <p><strong>วันที่สั่งซื้อ:</strong> ${new Date(order.created_at).toLocaleString('th-TH')}</p>
+                                <p><strong>สถานะ:</strong> ${getStatusText(order.status)}</p>
+                            </div>
+                            
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>สินค้า</th>
+                                        <th>ราคา</th>
+                                        <th>จำนวน</th>
+                                        <th>รวม</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${items.map(item => `
+                                        <tr>
+                                            <td>${item.name}</td>
+                                            <td>${formatPrice(item.price)}</td>
+                                            <td>${item.quantity}</td>
+                                            <td>${formatPrice(item.price * item.quantity)}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                                <tfoot>
+                                    <tr>
+                                        <td colspan="3" style="text-align: right; font-weight: bold;">ยอดรวมทั้งสิ้น:</td>
+                                        <td class="total">${formatPrice(order.total)}</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                            
+                            <div class="footer">
+                                <p>ขอบคุณที่ใช้บริการ</p>
+                                <p>พิมพ์เมื่อ: ${new Date().toLocaleString('th-TH')}</p>
+                            </div>
+                            
+                            <div class="no-print" style="text-align: center; margin-top: 20px;">
+                                <button onclick="window.print()" style="background: #3498db; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer;">
+                                    <i class="fas fa-print"></i> พิมพ์
+                                </button>
+                                <button onclick="window.close()" style="background: #95a5a6; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; margin-left: 10px;">
+                                    ปิด
+                                </button>
+                            </div>
+                        </body>
+                        </html>
+                    `;
+                    
+                    printWindow.document.write(printContent);
+                    printWindow.document.close();
+                    
+                    // Auto-print after content loads
+                    printWindow.onload = function() {
+                        printWindow.print();
+                    };
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('เกิดข้อผิดพลาดในการโหลดข้อมูล');
+                });
         }
     </script>
 </body>

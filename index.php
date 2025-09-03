@@ -12,7 +12,7 @@ if (!file_exists(__DIR__ . '/data/app.db')) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ร้านอุปกรณ์ตกปลา</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.6/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link href="public/css/style.css" rel="stylesheet">
 </head>
@@ -58,11 +58,13 @@ if (!file_exists(__DIR__ . '/data/app.db')) {
                 <!-- Search Box -->
                 <div class="mb-4">
                     <h5>ค้นหาสินค้า</h5>
-                    <div class="input-group">
-                        <input type="text" id="search-input" class="form-control" placeholder="ค้นหา...">
-                        <button class="btn btn-outline-secondary" onclick="searchProducts()">
-                            <i class="fas fa-search"></i>
-                        </button>
+                    <div class="search-container">
+                        <div class="input-group">
+                            <input type="text" id="search-input" class="form-control" placeholder="ค้นหา...">
+                            <button class="btn btn-outline-secondary" onclick="searchProducts()">
+                                <i class="fas fa-search"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -184,7 +186,12 @@ if (!file_exists(__DIR__ . '/data/app.db')) {
                     </div>
                     <div class="d-flex justify-content-between align-items-center mt-3">
                         <h5>รวม: <span id="cart-total">0</span> บาท</h5>
-                        <button class="btn btn-success" onclick="showCheckout()" id="checkout-btn">ชำระเงิน</button>
+                        <div>
+                            <button class="btn btn-warning me-2" onclick="clearCart()" id="clear-cart-btn">
+                                <i class="fas fa-trash-alt"></i> ล้างตะกร้า
+                            </button>
+                            <button class="btn btn-success" onclick="showCheckout()" id="checkout-btn">ชำระเงิน</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -247,7 +254,7 @@ if (!file_exists(__DIR__ . '/data/app.db')) {
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.6/dist/js/bootstrap.bundle.min.js"></script>
     <script src="public/js/app.js"></script>
 </body>
 </html>

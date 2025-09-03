@@ -1,187 +1,156 @@
 <?php
-require_once '../config/database.php';
+session_start();
+require_once '../config.php';
 
 header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE');
-header('Access-Control-Allow-Headers: Content-Type');
 
-$method = $_SERVER['REQUEST_METHOD'];
-$action = $_GET['action'] ?? '';
-
-try {
-    $pdo = getDB();
-    
-    switch ($method) {
-        case 'POST':
-            handlePost($pdo, $action);
-            break;
-        case 'GET':
-            handleGet($pdo, $action);
-            break;
-        case 'DELETE':
-            handleDelete($pdo, $action);
-            break;
-        default:
-            throw new Exception('Method not allowed');
-    }
-} catch (Exception $e) {
-    http_response_code(400);
-    echo json_encode(['error' => $e->getMessage()]);
-}
-
-function handlePost($pdo, $action) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $input = json_decode(file_get_contents('php://input'), true);
+    $action = $_GET['action'] ?? '';
     
     switch ($action) {
         case 'login':
-            login($pdo, $input);
+            $username = $input['username'] ?? '';
+            $password = $input['password'] ?? '';
+            
+            if (empty($username) || empty($password)) {
+                echo json_encode(['success' => false, 'error' => 'กรุณากรอกชื่อผู้ใช้และรหัสผ่าน']);
+                exit;
+            }
+            
+            try {
+                $pdo = getConnection();
+                $stmt = $pdo->prepare("SELECT id, username, password, email, full_name FROM users WHERE username = ?");
+                $stmt->execute([$username]);
+                $user = $stmt->fetch(PDO::FETCH_ASSOC);
+                
+                if ($user && password_verify($password, $user['password'])) {
+                    $_SESSION['user_id'] = $user['id'];
+                    $_SESSION['username'] = $user['username'];
+                    $_SESSION['full_name'] = $user['full_name'];
+                    $_SESSION['email'] = $user['email'];
+                    
+                    // Remove password from response
+                    unset($user['password']);
+                    
+                    echo json_encode([
+                        'success' => true, 
+                        'message' => 'เข้าสู่ระบบสำเร็จ',
+                        'user' => $user
+                    ]);
+                } else {
+                    echo json_encode(['success' => false, 'error' => 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง']);
+                }
+            } catch (Exception $e) {
+                echo json_encode(['success' => false, 'error' => 'เกิดข้อผิดพลาดในการเข้าสู่ระบบ']);
+            }
             break;
+            
         case 'register':
-            register($pdo, $input);
+            $username = $input['username'] ?? '';
+            $password = $input['password'] ?? '';
+            $confirmPassword = $input['confirmPassword'] ?? '';
+            
+            if (empty($username) || empty($password) || empty($confirmPassword)) {
+                echo json_encode(['success' => false, 'error' => 'กรุณากรอกข้อมูลให้ครบถ้วน']);
+                exit;
+            }
+            
+            if ($password !== $confirmPassword) {
+                echo json_encode(['success' => false, 'error' => 'รหัสผ่านไม่ตรงกัน']);
+                exit;
+            }
+            
+            if (strlen($password) < 6) {
+                echo json_encode(['success' => false, 'error' => 'รหัสผ่านต้องมีความยาวอย่างน้อย 6 ตัวอักษร']);
+                exit;
+            }
+            
+            try {
+                $pdo = getConnection();
+                
+                // Check if username already exists
+                $stmt = $pdo->prepare("SELECT id FROM users WHERE username = ?");
+                $stmt->execute([$username]);
+                if ($stmt->fetch()) {
+                    echo json_encode(['success' => false, 'error' => 'ชื่อผู้ใช้นี้ถูกใช้แล้ว']);
+                    exit;
+                }
+                
+                // Create new user
+                $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
+                $stmt = $pdo->prepare("INSERT INTO users (username, password, created_at) VALUES (?, ?, NOW())");
+                $stmt->execute([$username, $hashedPassword]);
+                
+                $userId = $pdo->lastInsertId();
+                
+                // Get user data
+                $stmt = $pdo->prepare("SELECT id, username, email, full_name FROM users WHERE id = ?");
+                $stmt->execute([$userId]);
+                $user = $stmt->fetch(PDO::FETCH_ASSOC);
+                
+                // Set session
+                $_SESSION['user_id'] = $user['id'];
+                $_SESSION['username'] = $user['username'];
+                $_SESSION['full_name'] = $user['full_name'];
+                $_SESSION['email'] = $user['email'];
+                
+                echo json_encode([
+                    'success' => true, 
+                    'message' => 'สมัครสมาชิกสำเร็จ',
+                    'user' => $user
+                ]);
+                
+            } catch (Exception $e) {
+                echo json_encode(['success' => false, 'error' => 'เกิดข้อผิดพลาดในการสมัครสมาชิก']);
+            }
             break;
+            
         default:
-            throw new Exception('Invalid action');
+            echo json_encode(['success' => false, 'error' => 'การกระทำไม่ถูกต้อง']);
     }
-}
-
-function handleGet($pdo, $action) {
+} else if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    $action = $_GET['action'] ?? '';
+    
     switch ($action) {
         case 'check':
-            checkAuth();
+            if (isset($_SESSION['user_id'])) {
+                try {
+                    $pdo = getConnection();
+                    $stmt = $pdo->prepare("SELECT id, username, email, full_name FROM users WHERE id = ?");
+                    $stmt->execute([$_SESSION['user_id']]);
+                    $user = $stmt->fetch(PDO::FETCH_ASSOC);
+                    
+                    if ($user) {
+                        echo json_encode(['authenticated' => true, 'user' => $user]);
+                    } else {
+                        session_destroy();
+                        echo json_encode(['authenticated' => false]);
+                    }
+                } catch (Exception $e) {
+                    echo json_encode(['authenticated' => false]);
+                }
+            } else {
+                echo json_encode(['authenticated' => false]);
+            }
             break;
-        case 'user':
-            getCurrentUser();
-            break;
+            
         default:
-            throw new Exception('Invalid action');
+            echo json_encode(['authenticated' => false]);
     }
-}
-
-function handleDelete($pdo, $action) {
+} else if ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
+    $action = $_GET['action'] ?? '';
+    
     switch ($action) {
         case 'logout':
-            logout();
+            session_destroy();
+            echo json_encode(['success' => true, 'message' => 'ออกจากระบบสำเร็จ']);
             break;
+            
         default:
-            throw new Exception('Invalid action');
+            echo json_encode(['success' => false, 'error' => 'การกระทำไม่ถูกต้อง']);
     }
-}
-
-function login($pdo, $input) {
-    $username = $input['username'] ?? '';
-    $password = $input['password'] ?? '';
-    
-    if (empty($username) || empty($password)) {
-        throw new Exception('กรุณากรอกชื่อผู้ใช้และรหัสผ่าน');
-    }
-    
-    $stmt = $pdo->prepare("SELECT id, username, password, role FROM users WHERE username = ?");
-    $stmt->execute([$username]);
-    $user = $stmt->fetch();
-    
-    if (!$user || !password_verify($password, $user['password'])) {
-        throw new Exception('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
-    }
-    
-    // Set session
-    $_SESSION['user_id'] = $user['id'];
-    $_SESSION['username'] = $user['username'];
-    $_SESSION['role'] = $user['role'];
-    
-    echo json_encode([
-        'success' => true,
-        'message' => 'เข้าสู่ระบบสำเร็จ',
-        'user' => [
-            'id' => $user['id'],
-            'username' => $user['username'],
-            'role' => $user['role']
-        ]
-    ]);
-}
-
-function register($pdo, $input) {
-    $username = $input['username'] ?? '';
-    $password = $input['password'] ?? '';
-    $confirmPassword = $input['confirmPassword'] ?? '';
-    
-    if (empty($username) || empty($password)) {
-        throw new Exception('กรุณากรอกข้อมูลให้ครบถ้วน');
-    }
-    
-    if (strlen($username) < 3) {
-        throw new Exception('ชื่อผู้ใช้ต้องมีอย่างน้อย 3 ตัวอักษร');
-    }
-    
-    if (strlen($password) < 6) {
-        throw new Exception('รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร');
-    }
-    
-    if ($password !== $confirmPassword) {
-        throw new Exception('รหัสผ่านไม่ตรงกัน');
-    }
-    
-    // Check if username already exists
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM users WHERE username = ?");
-    $stmt->execute([$username]);
-    
-    if ($stmt->fetchColumn() > 0) {
-        throw new Exception('ชื่อผู้ใช้นี้มีอยู่แล้ว');
-    }
-    
-    // Create new user
-    $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
-    $stmt = $pdo->prepare("INSERT INTO users (username, password, role) VALUES (?, ?, 'user')");
-    $stmt->execute([$username, $hashedPassword]);
-    
-    $userId = $pdo->lastInsertId();
-    
-    // Auto login after registration
-    $_SESSION['user_id'] = $userId;
-    $_SESSION['username'] = $username;
-    $_SESSION['role'] = 'user';
-    
-    echo json_encode([
-        'success' => true,
-        'message' => 'สมัครสมาชิกสำเร็จ',
-        'user' => [
-            'id' => $userId,
-            'username' => $username,
-            'role' => 'user'
-        ]
-    ]);
-}
-
-function checkAuth() {
-    echo json_encode([
-        'authenticated' => isLoggedIn(),
-        'user' => isLoggedIn() ? [
-            'id' => $_SESSION['user_id'],
-            'username' => $_SESSION['username'],
-            'role' => $_SESSION['role']
-        ] : null
-    ]);
-}
-
-function getCurrentUser() {
-    if (!isLoggedIn()) {
-        throw new Exception('ไม่ได้เข้าสู่ระบบ');
-    }
-    
-    echo json_encode([
-        'user' => [
-            'id' => $_SESSION['user_id'],
-            'username' => $_SESSION['username'],
-            'role' => $_SESSION['role']
-        ]
-    ]);
-}
-
-function logout() {
-    session_destroy();
-    echo json_encode([
-        'success' => true,
-        'message' => 'ออกจากระบบสำเร็จ'
-    ]);
+} else {
+    echo json_encode(['success' => false, 'error' => 'Method not allowed']);
 }
 ?>
